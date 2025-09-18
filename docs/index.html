@@ -1,29 +1,51 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>KAFRI 어촌 챗봇 데모</title>
-  <link rel="stylesheet" href="./assets/style.css">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>수산물 건강 챗봇 · 시범</title>
+<style>
+  :root{
+    --bg:#0b1220; --panel:#121a2b; --muted:#8fa3bf; --text:#e8eef9;
+    --accent:#4cc9f0; --accent2:#94d2bd; --chip:#20304b; --chip2:#1b2843;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--text); font:15px/1.6 system-ui,AppleSDGothicNeo,'Segoe UI',Pretendard,Roboto,Helvetica,Arial}
+  .wrap{max-width:920px; margin:0 auto; padding:12px 12px 100px}
+  .title{font-weight:700; font-size:18px; margin:6px 0 12px}
+  .panel{background:var(--panel); border:1px solid #1f2a42; border-radius:12px; overflow:hidden}
+  .log{height:58vh; min-height:360px; overflow:auto; padding:12px}
+  .msg{display:flex; gap:8px; margin:8px 0}
+  .msg .bubble{max-width:78%; padding:10px 12px; border-radius:12px}
+  .bot .bubble{background:var(--chip)}
+  .me{justify-content:flex-end}
+  .me .bubble{background:#21406b}
+  .meta{color:var(--muted); font-size:12px}
+  .inputbar{display:flex; gap:8px; padding:10px; background:#0f1726; border-top:1px solid #1f2a42}
+  .inputbar input{flex:1; background:#0c1423; border:1px solid #22314e; color:var(--text); border-radius:8px; padding:10px}
+  .inputbar button{background:var(--accent); color:#001219; border:0; padding:0 16px; border-radius:8px; font-weight:700; cursor:pointer}
+  .quickbar{position:sticky; bottom:0; padding:8px 10px; background:#0e1627; border-top:1px solid #1f2a42; display:flex; gap:6px; overflow:auto}
+  .chip{white-space:nowrap; border:1px solid #243455; background:var(--chip2); color:#cfe5ff; padding:6px 10px; border-radius:999px; cursor:pointer; font-size:13px}
+  .chip.small{padding:4px 8px; font-size:12px; opacity:.9}
+  .kbd{background:#0b1322; border:1px solid #273553; border-radius:6px; padding:1px 6px; color:#bcd}
+  .hint{color:#b7c5de; font-size:13px; padding:8px 12px}
+  a{color:var(--accent2); text-decoration:none}
+</style>
 </head>
 <body>
-  <header>
-    <h1>KAFRI 어촌 챗봇 데모</h1>
-    <p class="sub">정적 GitHub Pages 위에서 동작하는 최소 예제</p>
-  </header>
-
-  <main>
-    <div id="chat"></div>
-    <div id="composer">
-      <input id="q" type="text" placeholder="메시지를 입력하세요…">
-      <button id="send">보내기</button>
+  <div class="wrap">
+    <div class="title">수산물 건강 챗봇 · 시범(고혈압)</div>
+    <div class="panel">
+      <div id="log" class="log" aria-live="polite"></div>
+      <div id="quickbar" class="quickbar" hidden></div>
+      <div class="inputbar">
+        <input id="input" type="text" autocomplete="off" placeholder="메시지를 입력하세요 (예: 고혈압 / 김 / 주요영양소 / 레시피 …)" />
+        <button id="send">전송</button>
+      </div>
     </div>
-  </main>
+    <div class="hint">Tip: 아래 회색 <span class="kbd">칩</span>을 눌러도 되고, 직접 타이핑해도 됩니다.</div>
+  </div>
 
-  <footer>
-    <small>© 2025 KAFRI. 테스트 페이지</small>
-  </footer>
-
-  <script src="./assets/app.js"></script>
+<script src="chatbot.js"></script>
 </body>
 </html>
