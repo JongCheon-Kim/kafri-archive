@@ -1,0 +1,12 @@
+
+body{font-family:Arial, sans-serif;background:#f8fafc;color:#0f172a;margin:0}
+header,main,footer{max-width:900px;margin:auto;padding:16px}
+h1{margin-bottom:4px}
+.sub{color:#475569}
+#chat{background:#fff;border:1px solid #ddd;border-radius:12px;height:50vh;overflow:auto;padding:12px}
+#composer{display:flex;gap:8px;margin-top:8px}
+#composer input{flex:1;padding:10px;border:1px solid #ccc;border-radius:8px}
+#composer button{padding:10px 16px;background:#334155;color:#fff;border:none;border-radius:8px;cursor:pointer}
+.bubble{display:inline-block;padding:8px 12px;border-radius:10px;margin:6px 0;max-width:75%}
+.user{background:#e0e7ff}
+.bot{background:#ecfccb}
