@@ -3,175 +3,125 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>수산물 건강 챗봇 · 시범</title>
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
+  <title>수산물 건강 챗봇 · 휴대용</title>
   <style>
-    :root{--bg:#0f141a;--panel:#121a22;--text:#e6edf3;--muted:#9fb0bf;--accent:#2f81f7;--chip:#1b2733;--chipText:#d7e2ea;--ring:#4f91ff;--border:#223041}
+    :root {
+      --bg:#0f141a; --panel:#121a22; --text:#e6edf3; --muted:#9fb0bf;
+      --accent:#2f81f7; --chip:#1b2733; --chipText:#d7e2ea; --ring:#4f91ff;
+      --border:#223041;
+    }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Noto Sans KR,sans-serif}
-    .wrap{max-width:1280px;margin:24px auto;padding:0 16px}
-    .grid{display:grid;gap:16px;grid-template-columns:1fr 1fr 1fr}
-    .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;min-height:420px}
-    h2{margin:0 0 12px;font-size:24px}
+    .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
+    h1{font-size:20px;margin:0 0 12px}
+    .grid{display:grid;gap:16px;grid-template-columns:320px 1fr}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px}
+    .sectionTitle{font-size:14px;color:var(--muted);margin:0 0 8px}
     .chips{display:flex;flex-wrap:wrap;gap:8px}
     .chip{background:var(--chip);color:var(--chipText);border:1px solid var(--border);border-radius:999px;padding:8px 12px;font-size:14px;cursor:pointer;user-select:none;outline:0}
     .chip:focus{box-shadow:0 0 0 3px var(--ring)}
-    .chip.active{background:var(--accent);color:#fff;border-color:transparent}
+    .chip.active{background:var(--accent);color:white;border-color:transparent}
     .muted{color:var(--muted)}
-    .content{white-space:pre-wrap;line-height:1.6}
-    .btn{background:#1b2a3a;color:#d7e2ea;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;cursor:pointer}
+    .content{min-height:380px;white-space:pre-wrap;line-height:1.6}
     .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-    @media (max-width:1024px){.grid{grid-template-columns:1fr}}
+    .btn{background:#1b2a3a;color:#d7e2ea;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;cursor:pointer}
+    .btn:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
+    .btn.primary{background:var(--accent);color:#fff;border-color:transparent}
+    .crumb{font-size:13px;color:var(--muted);margin-bottom:8px}
+    @media (max-width:900px){.grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
   <div class="wrap">
+    <h1>수산물 건강 챗봇 · 시범 (휴대용)</h1>
     <div class="grid">
+      <!-- 좌: 카테고리/어종 -->
       <div class="panel">
-        <h2>카테고리</h2>
+        <div class="sectionTitle">카테고리</div>
         <div id="categoryList" class="chips" aria-label="카테고리 목록"></div>
-      </div>
 
-      <div class="panel">
-        <h2>어종</h2>
+        <div class="sectionTitle" style="margin-top:16px">어종</div>
         <div id="fishList" class="chips" aria-label="어종 목록"></div>
+
+        <p class="muted" style="margin-top:12px">
+          Tip: <span class="chip" style="cursor:default">전체 보기</span>는 세부 항목을 모두 펼칩니다. 데이터는 <code>health_fish.json</code>에서 불러옵니다.
+        </p>
       </div>
 
+      <!-- 우: 세부 내용 -->
       <div class="panel">
-        <h2>세부 내용</h2>
+        <div id="crumb" class="crumb"></div>
+        <div id="content" class="content">카테고리를 선택하세요.</div>
+
         <div class="toolbar">
           <button id="btnAll" class="btn">전체 보기</button>
-          <button id="btnSource" class="btn">출처</button>
+          <button id="btnOther" class="btn">다른 항목</button>
+          <button id="btnBack" class="btn">뒤로</button>
+          <button id="btnHome" class="btn">처음으로</button>
+          <button id="btnNewWindow" class="btn">새 창 열기</button>
+          <button id="btnAbout" class="btn primary">도움말</button>
         </div>
-        <div id="content" class="content" style="margin-top:10px;">섹션을 선택하세요.</div>
-        <p class="muted" style="margin-top:16px">카테고리를 선택하면 오른쪽에 어종이 나타납니다. 어종을 선택하면 ‘출처 / 주요영양소 / 약효 및 효용 / 제철 및 선택법 / 조리 포인트 / 어울리는 요리 / 레시피’를 고를 수 있습니다.</p>
-        <p class="muted">데이터는 <code>health_fish.json</code>에서 로드됩니다.</p>
       </div>
     </div>
   </div>
 
-  <!-- 폴백 데이터 (fetch 실패시 자동 사용) -->
+  <!-- 인라인 폴백 데이터: fetch 실패 시 JS가 자동으로 이 블록을 사용 -->
   <script id="healthDataInline" type="application/json">
   {
     "categories": {
       "고혈압 예방": ["김","다시마","멸치","가리비","미역","톳","우뭇가사리","매생이"],
       "간 기능 향상": ["문어","낙지","대하","꽃게","주꾸미","소라","꼬막","재첩","바지락","대합"]
+    },
+    "details": {
+      "김": {
+        "출처": "생선해산물 건강사전",
+        "주요영양소": "단백질, 칼슘·철, 비타민 A·C, 식이섬유.",
+        "약효 및 효용": "저열량·고영양, 정전기 다당류가 콜레스테롤·중금속 배출 보조, 소화가 순한.",
+        "제철 및 선택법": "한겨울(12~2월) 제철. 색이 진하고 미세한 잔모래가 적은 것.",
+        "조리 포인트": "오래 굽히지 말고 마지막에 넣어 색·향 유지.",
+        "어울리는 요리": "김무침, 김국, 김밥, 무침 반찬.",
+        "레시피": "무침: 간장·참기름·마늘과 버무림. 국: 멸치육수에 마지막에 넣고 간간히."
+      },
+      "다시마": {
+        "출처": "생선해산물 건강사전",
+        "주요영양소": "알긴산, 라미나린, 식이섬유, 칼슘·요오드.",
+        "약효 및 효용": "알긴산이 나트륨·콜레스테롤 배출 보조, 점액질로 장 건강 도움.",
+        "제철 및 선택법": "봄~여름 수확. 표면이 지나치게 하얗게 분말이면 세척.",
+        "조리 포인트": "육수는 첫물 10분 내외, 오래 끓이면 쓴맛.",
+        "어울리는 요리": "다시마 육수, 조림, 무침.",
+        "레시피": "다시마무조림: 간장·설탕·참기름으로 졸임."
+      },
+      "우뭇가사리": {
+        "출처": "생선해산물 건강사전",
+        "주요영양소": "식이섬유(아가로스·아가로펙틴).",
+        "약효 및 효용": "저열량, 포만감↑, 장활동 촉진, 체중·혈당 식후반응 완화 보조.",
+        "제철 및 선택법": "깨끗한 원초, 잡태·이물 적은 것 선별.",
+        "조리 포인트": "한천은 충분히 불리고 끓여 응고력 살리기.",
+        "어울리는 요리": "우무 냉채, 묵, 국수.",
+        "레시피": "우무 냉채: 식초·간장·겨자·채소와 무침."
+      },
+      "매생이": {
+        "출처": "생선해산물 건강사전",
+        "주요영양소": "단백질·필수아미노산, 철·셀레늄, 비타민 A·C.",
+        "약효 및 효용": "저지방 고단백, 키토산이 지방대사 보조, 회복기 영양식으로 무난.",
+        "제철 및 선택법": "한겨울(1~2월). 색이 진하고 촘촘한 조직.",
+        "조리 포인트": "오래 끓이면 풀어짐. 찜은 단시간, 탕은 거품 제거.",
+        "어울리는 요리": "매생이국, 매생이굴국, 전.",
+        "레시피": "매생이국: 멸치육수에 매생이 넣고 간간히, 굴·두부 추가 가능."
+      },
+      "꽃게": {
+        "출처": "생선해산물 건강사전",
+        "주요영양소": "단백질, 칼슘·아연, 키토산, 비타민 B군.",
+        "약효 및 효용": "저지방 고단백, 키토산이 지방대사 보조.",
+        "제철 및 선택법": "봄(암게), 가을(숫게). 껍질 광택·중량감 확인.",
+        "조리 포인트": "장시간 끓이면 살이 퍼짐. 찜은 단시간, 탕은 거품 제거.",
+        "어울리는 요리": "꽃게찜, 꽃게탕, 양념게장.",
+        "레시피": "찜: 손질 후 찜기에 10~15분. 탕: 무·대파와 끓여 시원하게."
+      }
     }
   }
   </script>
 
-  <script>
-  (function(){
-    const $ = (s)=>document.querySelector(s);
-    const categoryList = $('#categoryList');
-    const fishList = $('#fishList');
-    const content = $('#content');
-    const btnAll = $('#btnAll');
-    const btnSource = $('#btnSource');
-
-    let DATA=null, currentCategory=null, currentFish=null;
-
-    function renderCategories(){
-      categoryList.innerHTML='';
-      Object.keys(DATA.categories).forEach(cat=>{
-        const chip=document.createElement('button');
-        chip.className='chip';
-        chip.textContent=cat;
-        chip.onclick=()=>{
-          currentCategory=cat; currentFish=null;
-          [...categoryList.children].forEach(c=>c.classList.remove('active'));
-          chip.classList.add('active');
-          renderFish();
-          content.textContent=`[${cat}] 어종을 선택하세요.`;
-        };
-        categoryList.appendChild(chip);
-      });
-    }
-
-    function renderFish(){
-      fishList.innerHTML='';
-      (DATA.categories[currentCategory]||[]).forEach(f=>{
-        const chip=document.createElement('button');
-        chip.className='chip';
-        chip.textContent=f;
-        chip.onclick=()=>{
-          currentFish=f;
-          [...fishList.children].forEach(c=>c.classList.remove('active'));
-          chip.classList.add('active');
-          renderDetails('source');
-        };
-        fishList.appendChild(chip);
-      });
-    }
-
-    function renderDetails(mode){
-      if(!currentCategory||!currentFish){content.textContent='세션을 선택하세요.';return;}
-      const d=(DATA.details&&DATA.details[currentFish])||{};
-      const blocks=[
-        ['출처', d['출처']],
-        ['주요영양소', d['주요영양소']],
-        ['약효 및 효용', d['약효 및 효용']],
-        ['제철 및 선택법', d['제철 및 선택법']],
-        ['조리 포인트', d['조리 포인트']],
-        ['어울리는 요리', d['어울리는 요리']],
-        ['레시피', d['레시피']]
-      ];
-      if(mode==='all'){
-        const lines=[];
-        lines.push(`카테고리를 선택하세요.\n[${currentCategory}] 어종을 선택하세요.\n`);
-        lines.push(`[${currentCategory} · ${currentFish}]`);
-        lines.push('・ 세션을 선택하세요.\n');
-        lines.push('📰 전체 보기');
-        blocks.forEach(([k,v])=>{lines.push(`- ${k}`);lines.push(v?String(v):'정보 없음');});
-        content.textContent=lines.join('\n');
-      }else{
-        const val=d['출처']?String(d['출처']):'정보 없음';
-        content.textContent=`카테고리를 선택하세요.\n[${currentCategory}] 어종을 선택하세요.\n\n[${currentCategory} · ${currentFish}]\n・ 세션을 선택하세요.\n\n🪪 출처\n${val}`;
-      }
-    }
-
-    btnAll.onclick=()=> currentFish ? renderDetails('all') : content.textContent='· 전체 보기는 어종 선택 후 이용할 수 있습니다. 어종을 먼저 선택해 주세요.';
-    btnSource.onclick=()=> currentFish ? renderDetails('source') : content.textContent='· 출처는 어종 선택 후 이용할 수 있습니다. 어종을 먼저 선택해 주세요.';
-
-    async function loadData(){
-      // 1) 외부 JSON 시도 (캐시 무효화)
-      try{
-        const res=await fetch(`health_fish.json?ts=${Date.now()}`,{cache:'no-store'});
-        if(!res.ok) throw new Error(res.status);
-        const json=await res.json();
-        if(!json||!json.categories) throw new Error('invalid schema');
-        console.log('[health-fish] loaded from health_fish.json');
-        return json;
-      }catch(e){
-        console.warn('[health-fish] fetch failed, use inline fallback', e);
-      }
-      // 2) 인라인 폴백
-      try{
-        const inline=$('#healthDataInline');
-        if(inline && inline.textContent.trim()){
-          const json=JSON.parse(inline.textContent);
-          if(json && json.categories){
-            console.log('[health-fish] loaded from inline fallback');
-            return json;
-          }
-        }
-      }catch(e){console.error(e);}
-      return null;
-    }
-
-    window.addEventListener('DOMContentLoaded', async()=>{
-      DATA=await loadData();
-      if(!DATA){
-        content.innerHTML='데이터 로드 실패. <br>docs/health_fish.json 존재/철자/경로 확인';
-        return;
-      }
-      DATA.details = DATA.details || {}; // details 없을 수도 있어 안전 가드
-      renderCategories();
-      content.textContent='카테고리를 먼저 선택하세요.';
-    });
-  })();
-  </script>
+  <script src="chatbot.js?v=20250919" defer></script>
 </body>
 </html>
