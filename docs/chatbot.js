@@ -78,7 +78,7 @@ function pickFromList(msg, list) {
     if (i>=0 && i<list.length) return i;
   }
   // 텍스트(완전일치 우선 → 부분포함 보조)
-  const norm = (s)=>s.replace(/\s/g,'').toLowerCase();
+  const norm = (s)=>String(s).replace(/\s/g,'').toLowerCase();
   const nmsg = norm(t);
   let idx = list.findIndex(x=>norm(x)===nmsg);
   if (idx<0) idx = list.findIndex(x=>norm(x).includes(nmsg));
@@ -94,8 +94,13 @@ function renderSection(spec, sec) {
     case '주요영양소': {
       const j = spec['주요영양소'];
       if (!j) return null;
-      // 키:값 테이블 형태
-      const rows = Object.entries(j).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+      // 객체/배열 모두 허용: {영양소:값} 또는 [[영양소,값], ...]
+      let rows = '';
+      if (Array.isArray(j)) {
+        rows = j.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+      } else {
+        rows = Object.entries(j).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+      }
       return `<b>주요 영양소</b><br><table style="width:100%;border-collapse:collapse" border="1">
         <thead><tr><th style="width:30%">영양소</th><th>수치/설명</th></tr></thead>
         <tbody>${rows}</tbody></table>`;
