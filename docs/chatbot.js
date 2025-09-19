@@ -1,7 +1,8 @@
-/* 휴대용 챗봇 JS (스키마 자동 인식/정규화 + GitHub Pages 호환)
-   - health_fish.json을 우선 fetch('./health_fish.json?v=20250919')
-   - 실패하면 index.html 내 인라인 JSON(#healthDataInline) 폴백
-   - 새 스키마(title, categories:[]) · 기존 스키마({categories:{}, details:{}}) 모두 지원
+/* 수산물 건강 챗봇 (휴대용 · GitHub Pages 호환)
+   - 새 스키마({ title, categories:[{name, items:[{name, sections}]}] })와
+     구 스키마({ categories:{}, details:{} }) 모두 자동 인식·정규화
+   - health_fish.json 우선 로드, 실패 시 #healthDataInline 폴백
+   - 단축키: 1~9, Backspace, H(홈), A(전체), O(다른항목), N(새창), ?(도움말)
 */
 (() => {
   const el = (id) => document.getElementById(id);
@@ -17,28 +18,30 @@
   const $btnNew = el('btnNewWindow');
   const $btnAbout = el('btnAbout');
 
-  let DATA = null; // 항상 {categories:{카테고리:[어종...]}, details:{어종:{...}}} 형태로 정규화
+  let DATA = null; // 항상 {categories:{카테고리:[어종...]}, details:{어종:{...}}} 형태
   let state = { category: null, fish: null, step: 'category' };
 
   // ---------- 스키마 정규화 ----------
   function normalize(raw) {
-    // 케이스 1) 기존 스키마 {categories:{}, details:{}}
+    // 구 스키마: { categories:{}, details:{} }
     if (raw && raw.categories && !Array.isArray(raw.categories) && raw.details) {
       return raw;
     }
-    // 케이스 2) 새 스키마 {title, categories:[{name, items:[{name, sections:{..}}]}]}
+    // 새 스키마: { title, categories:[{ name, items:[{ name, sections:{} }] }] }
     if (raw && Array.isArray(raw.categories)) {
       const catMap = {};
       const detMap = {};
-      raw.categories.forEach(cat => {
-        const cname = cat.name;
+      raw.categories.forEach((cat) => {
+        const cname = (cat && cat.name) ? String(cat.name).trim() : '';
         if (!cname) return;
-        catMap[cname] = (cat.items || []).map(it => it.name).filter(Boolean);
-        (cat.items || []).forEach(it => {
-          const fname = it.name;
-          const sec = it.sections || {};
+
+        const fishNames = [];
+        (cat.items || []).forEach((it) => {
+          const fname = (it && it.name) ? String(it.name).trim() : '';
           if (!fname) return;
-          // sections 키를 그대로 사용 (출처, 주요영양소, 약효 및 효용, 제철 및 선택법, 조리 포인트, 어울리는 요리, 레시피)
+          fishNames.push(fname);
+
+          const sec = it.sections || {};
           detMap[fname] = {
             '출처': sec['출처'] || '',
             '주요영양소': sec['주요영양소'] || '',
@@ -49,21 +52,22 @@
             '레시피': sec['레시피'] || ''
           };
         });
+        catMap[cname] = fishNames;
       });
       return { categories: catMap, details: detMap };
     }
-    // 알 수 없는 구조 → 빈 구조 반환
+    // 알 수 없는 구조
     return { categories: {}, details: {} };
   }
 
   // ---------- 데이터 로드 (fetch -> inline fallback) ----------
   async function loadData() {
-    const url = './health_fish.json?v=20250919';
+    const url = './health_fish.json?v=20250919-2'; // 캐시 무효화용 버전 쿼리
     try {
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
       const text = await res.text();
-      const clean = text.replace(/^\uFEFF/, '');
+      const clean = text.replace(/^\uFEFF/, ''); // BOM 제거
       DATA = normalize(JSON.parse(clean));
       return;
     } catch (e) {
@@ -71,8 +75,8 @@
       if (inline && inline.textContent) {
         try {
           DATA = normalize(JSON.parse(inline.textContent.trim()));
-        } catch (err) {
-          alert('내장 데이터 파싱 실패. JSON 구조를 확인하세요.');
+        } catch {
+          alert('내장 데이터(JSON) 파싱 실패. 구조를 확인하세요.');
         }
       } else {
         alert('데이터 로드 실패(health_fish.json / inline).');
@@ -84,10 +88,11 @@
   function renderCategories() {
     if (!DATA) return;
     $cat.innerHTML = '';
-    Object.keys(DATA.categories).forEach((name, idx) => {
+    const names = Object.keys(DATA.categories);
+    names.forEach((name, idx) => {
       const b = document.createElement('button');
       b.className = 'chip' + (state.category === name ? ' active' : '');
-      b.textContent = `${name}`;
+      b.textContent = name;
       b.setAttribute('data-idx', String(idx + 1));
       b.onclick = () => selectCategory(name);
       $cat.appendChild(b);
@@ -97,10 +102,11 @@
   function renderFishes() {
     $fish.innerHTML = '';
     if (!state.category || !DATA) return;
-    (DATA.categories[state.category] || []).forEach((name, idx) => {
+    const fishes = DATA.categories[state.category] || [];
+    fishes.forEach((name, idx) => {
       const b = document.createElement('button');
       b.className = 'chip' + (state.fish === name ? ' active' : '');
-      b.textContent = `${name}`;
+      b.textContent = name;
       b.setAttribute('data-idx', String(idx + 1));
       b.onclick = () => selectFish(name);
       $fish.appendChild(b);
@@ -114,7 +120,8 @@
 
   function renderPromptFish() {
     $crumb.textContent = `${state.category} ▸ 어종 선택`;
-    $content.textContent = `[${state.category}] 어종을 선택하세요.\n\n· 전체 보기는 어종 선택 후 이용할 수 있습니다. 어종을 먼저 선택해주세요.`;
+    $content.textContent =
+      `[${state.category}] 어종을 선택하세요.\n\n· 전체 보기는 어종 선택 후 이용할 수 있습니다. 어종을 먼저 선택해주세요.`;
   }
 
   function renderDetails(single = false) {
@@ -134,7 +141,8 @@
     if (!single) out += '🧭 전체 보기\n';
     out += `\n[${state.category} · ${state.fish}]\n`;
     order.forEach((k) => {
-      if ((d[k] || '').trim() !== '') {
+      const v = (d[k] || '').trim();
+      if (v) {
         const icon = (k === '출처') ? '🔖' :
                      (k === '주요영양소') ? '🍙' :
                      (k === '약효 및 효용') ? '💊' :
@@ -142,7 +150,7 @@
                      (k === '조리 포인트') ? '🍳' :
                      (k === '어울리는 요리') ? '🥢' :
                      (k === '레시피') ? '📜' : '•';
-        out += `\n${icon} ${k}\n${d[k]}\n`;
+        out += `\n${icon} ${k}\n${v}\n`;
       }
     });
     $crumb.textContent = `${state.category} ▸ ${state.fish}`;
@@ -193,7 +201,7 @@
     renderPromptFish();
   }
 
-  // ---------- 키보드 ----------
+  // ---------- 단축키 ----------
   function onKey(e) {
     const key = e.key;
     if (/^[1-9]$/.test(key)) {
@@ -202,7 +210,7 @@
         const names = Object.keys(DATA.categories);
         if (idx <= names.length) selectCategory(names[idx - 1]);
       } else if (state.step === 'fish' && state.category) {
-        const names = DATA.categories[state.category];
+        const names = DATA.categories[state.category] || [];
         if (idx <= names.length) selectFish(names[idx - 1]);
       }
     } else if (key === 'Backspace') {
@@ -220,7 +228,6 @@
     }
   }
 
-  // ---------- 도움말 ----------
   function about(){
     alert(
 `사용법
@@ -229,7 +236,7 @@
 스키마: 기존/새 JSON 모두 지원. GitHub Pages 호환(./경로 + 캐시 무효화).`);
   }
 
-  // 이벤트 바인딩 + 초기화
+  // ---------- 초기화 ----------
   $btnHome.onclick = goHome;
   $btnBack.onclick = goBack;
   $btnAll.onclick = showAll;
