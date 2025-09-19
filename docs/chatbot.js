@@ -1,7 +1,7 @@
-/* 휴대용 챗봇 JS (GitHub Pages 호환)
+/* 휴대용 챗봇 JS (스키마 자동 인식/정규화 + GitHub Pages 호환)
    - health_fish.json을 우선 fetch('./health_fish.json?v=20250919')
    - 실패하면 index.html 내 인라인 JSON(#healthDataInline) 폴백
-   - 키보드: 1~9, Backspace, H(홈), A(전체), O(다른항목), N(새창), ?(도움말)
+   - 새 스키마(title, categories:[]) · 기존 스키마({categories:{}, details:{}}) 모두 지원
 */
 (() => {
   const el = (id) => document.getElementById(id);
@@ -17,29 +17,62 @@
   const $btnNew = el('btnNewWindow');
   const $btnAbout = el('btnAbout');
 
-  let DATA = null;
+  let DATA = null; // 항상 {categories:{카테고리:[어종...]}, details:{어종:{...}}} 형태로 정규화
   let state = { category: null, fish: null, step: 'category' };
 
-  // ----- 데이터 로드 (fetch -> inline fallback)
+  // ---------- 스키마 정규화 ----------
+  function normalize(raw) {
+    // 케이스 1) 기존 스키마 {categories:{}, details:{}}
+    if (raw && raw.categories && !Array.isArray(raw.categories) && raw.details) {
+      return raw;
+    }
+    // 케이스 2) 새 스키마 {title, categories:[{name, items:[{name, sections:{..}}]}]}
+    if (raw && Array.isArray(raw.categories)) {
+      const catMap = {};
+      const detMap = {};
+      raw.categories.forEach(cat => {
+        const cname = cat.name;
+        if (!cname) return;
+        catMap[cname] = (cat.items || []).map(it => it.name).filter(Boolean);
+        (cat.items || []).forEach(it => {
+          const fname = it.name;
+          const sec = it.sections || {};
+          if (!fname) return;
+          // sections 키를 그대로 사용 (출처, 주요영양소, 약효 및 효용, 제철 및 선택법, 조리 포인트, 어울리는 요리, 레시피)
+          detMap[fname] = {
+            '출처': sec['출처'] || '',
+            '주요영양소': sec['주요영양소'] || '',
+            '약효 및 효용': sec['약효 및 효용'] || '',
+            '제철 및 선택법': sec['제철 및 선택법'] || '',
+            '조리 포인트': sec['조리 포인트'] || '',
+            '어울리는 요리': sec['어울리는 요리'] || '',
+            '레시피': sec['레시피'] || ''
+          };
+        });
+      });
+      return { categories: catMap, details: detMap };
+    }
+    // 알 수 없는 구조 → 빈 구조 반환
+    return { categories: {}, details: {} };
+  }
+
+  // ---------- 데이터 로드 (fetch -> inline fallback) ----------
   async function loadData() {
-    // GitHub Pages 프로젝트 경로에서도 동작하도록 './' + 캐시버스터 적용
     const url = './health_fish.json?v=20250919';
     try {
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
       const text = await res.text();
-      // BOM 제거 및 안전 파싱
       const clean = text.replace(/^\uFEFF/, '');
-      DATA = JSON.parse(clean);
+      DATA = normalize(JSON.parse(clean));
       return;
     } catch (e) {
-      // 인라인 폴백
       const inline = document.getElementById('healthDataInline');
       if (inline && inline.textContent) {
         try {
-          DATA = JSON.parse(inline.textContent.trim());
+          DATA = normalize(JSON.parse(inline.textContent.trim()));
         } catch (err) {
-          alert('내장 데이터 파싱 실패. JSON을 확인하세요.');
+          alert('내장 데이터 파싱 실패. JSON 구조를 확인하세요.');
         }
       } else {
         alert('데이터 로드 실패(health_fish.json / inline).');
@@ -47,7 +80,7 @@
     }
   }
 
-  // ----- 렌더링
+  // ---------- 렌더링 ----------
   function renderCategories() {
     if (!DATA) return;
     $cat.innerHTML = '';
@@ -89,13 +122,11 @@
     const d = (DATA.details && DATA.details[state.fish]) || {};
     const order = ['출처','주요영양소','약효 및 효용','제철 및 선택법','조리 포인트','어울리는 요리','레시피'];
 
-    // details 없을 때 사용자 안내
-    const hasAny = order.some((k) => !!d[k]);
+    const hasAny = order.some((k) => (d[k] || '').trim() !== '');
     if (!hasAny) {
       $crumb.textContent = `${state.category} ▸ ${state.fish}`;
       $content.textContent =
-        `[${state.category} · ${state.fish}]\n` +
-        '세부 정보가 비어 있습니다. health_fish.json에 해당 어종의 details 항목을 추가하세요.';
+        `[${state.category} · ${state.fish}]\n세부 정보가 비어 있습니다. health_fish.json에서 해당 어종의 sections(7개 항목)을 채워주세요.`;
       return;
     }
 
@@ -103,7 +134,7 @@
     if (!single) out += '🧭 전체 보기\n';
     out += `\n[${state.category} · ${state.fish}]\n`;
     order.forEach((k) => {
-      if (d[k]) {
+      if ((d[k] || '').trim() !== '') {
         const icon = (k === '출처') ? '🔖' :
                      (k === '주요영양소') ? '🍙' :
                      (k === '약효 및 효용') ? '💊' :
@@ -118,7 +149,7 @@
     $content.textContent = out.trim();
   }
 
-  // ----- 상태 전환
+  // ---------- 상태 전환 ----------
   function selectCategory(name) {
     state.category = name;
     state.fish = null;
@@ -127,7 +158,6 @@
     renderFishes();
     renderPromptFish();
   }
-
   function selectFish(name) {
     state.fish = name;
     state.step = 'details';
@@ -135,7 +165,6 @@
     renderFishes();
     renderDetails(true);
   }
-
   function goBack() {
     if (state.step === 'details') {
       state.step = 'fish';
@@ -146,19 +175,16 @@
       goHome();
     }
   }
-
   function goHome() {
     state = { category: null, fish: null, step: 'category' };
     renderCategories();
     $fish.innerHTML = '';
     renderContentInitial();
   }
-
   function showAll() {
     if (!state.fish) return alert('어종을 먼저 선택하세요.');
     renderDetails(false);
   }
-
   function otherItem() {
     if (!state.category) return alert('카테고리를 먼저 선택하세요.');
     state.fish = null;
@@ -167,7 +193,7 @@
     renderPromptFish();
   }
 
-  // ----- 키보드 단축키
+  // ---------- 키보드 ----------
   function onKey(e) {
     const key = e.key;
     if (/^[1-9]$/.test(key)) {
@@ -194,23 +220,16 @@
     }
   }
 
-  // ----- 도움말
+  // ---------- 도움말 ----------
   function about(){
     alert(
-`사용법 안내
+`사용법
 1) 카테고리 선택 → 어종 선택 → 세부 항목 자동 정렬 출력
-2) 단축키:
-   - 숫자 1~9: 목록에서 선택
-   - Backspace: 뒤로
-   - H: 처음으로
-   - A: 전체 보기
-   - O: 다른 항목
-   - N: 새 창
-   - ?: 도움말
-GitHub Pages 호환: health_fish.json 경로는 ./ 기준이며 캐시 무효화가 적용됩니다.`);
+2) 단축키: 1~9 선택, Backspace 뒤로, H 처음, A 전체, O 다른항목, N 새창, ? 도움말
+스키마: 기존/새 JSON 모두 지원. GitHub Pages 호환(./경로 + 캐시 무효화).`);
   }
 
-  // 이벤트 바인딩
+  // 이벤트 바인딩 + 초기화
   $btnHome.onclick = goHome;
   $btnBack.onclick = goBack;
   $btnAll.onclick = showAll;
@@ -219,7 +238,6 @@ GitHub Pages 호환: health_fish.json 경로는 ./ 기준이며 캐시 무효화
   $btnAbout.onclick = about;
   document.addEventListener('keydown', onKey);
 
-  // 초기화
   (async () => {
     await loadData();
     renderCategories();
