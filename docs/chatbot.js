@@ -1,289 +1,259 @@
-// chatbot.js — KAFRI Health Bot (다카테고리 버전)
-// 요구사항: index.html의 #log, #input, #send, #quickbar 요소 존재 가정
 
-const el = (id)=>document.getElementById(id);
-const log = el('log');
-const input = el('input');
-const sendBtn = el('send');
-const quickbar = el('quickbar');
-
-let DB = null;
-
-// 대화 상태
-const S = {
-  MENU: 'MENU',
-  PICK_CAT: 'PICK_CAT',
-  PICK_SPECIES: 'PICK_SPECIES',
-  PICK_SECTION: 'PICK_SECTION',
-  SHOW_RESULT: 'SHOW_RESULT',
-  LOOP_CONFIRM: 'LOOP_CONFIRM'
+/* 수산물 건강 챗봇 - 안정판 (객체형 JSON 대응) */
+let db = null;
+let state = {
+  category: null,
+  item: null,
 };
 
-let state = S.MENU;
-let current = {
-  categoryIdx: null,
-  speciesIdx: null,
-  section: null
-};
-
-// 섹션 라벨 고정
-const SECTIONS = [
-  '개요', // 선택적 설명(없으면 skip)
-  '주요영양소',
-  '약효및효용',
-  '제철및선택법',
-  '조리포인트',
-  '어울리는요리',
-  '레시피',
-  '출처'
-];
-
-// 도우미
-function bot(text) {
-  const row = document.createElement('div');
-  row.className = 'msg bot';
-  row.innerHTML = `<div class="bubble">${text}</div>`;
-  log.appendChild(row); log.scrollTop = log.scrollHeight;
-}
-function me(text) {
-  const row = document.createElement('div');
-  row.className = 'msg me';
-  row.innerHTML = `<div class="bubble">${text}</div>`;
-  log.appendChild(row); log.scrollTop = log.scrollHeight;
-}
-function chips(items) {
-  quickbar.innerHTML = '';
-  items.forEach(t=>{
-    const c = document.createElement('button');
-    c.className = 'chip';
-    c.textContent = t;
-    c.onclick = ()=>handleUser(t);
-    quickbar.appendChild(c);
-  });
-  quickbar.hidden = items.length===0;
+// ---------- util ----------
+function el(tag, className, text) {
+  const $ = document.createElement(tag);
+  if (className) $.className = className;
+  if (text !== undefined && text !== null) $.textContent = text;
+  return $;
 }
 
-// JSON 로드
+function clear($node) {
+  while ($node.firstChild) $node.removeChild($node.firstChild);
+}
+
+function br() { return document.createElement("br"); }
+
+function safeArr(x) {
+  if (!x) return [];
+  if (Array.isArray(x)) return x;
+  return [String(x)];
+}
+
+// ---------- load DB ----------
 async function loadDB() {
-  const res = await fetch('health_fish.json');
-  DB = await res.json();
-}
-
-// 숫자/텍스트 선택 파싱
-function pickFromList(msg, list) {
-  const t = msg.trim();
-  // 숫자
-  if (/^\d+$/.test(t)) {
-    const i = parseInt(t,10)-1;
-    if (i>=0 && i<list.length) return i;
-  }
-  // 텍스트(완전일치 우선 → 부분포함 보조)
-  const norm = (s)=>String(s).replace(/\s/g,'').toLowerCase();
-  const nmsg = norm(t);
-  let idx = list.findIndex(x=>norm(x)===nmsg);
-  if (idx<0) idx = list.findIndex(x=>norm(x).includes(nmsg));
-  return idx>=0? idx : null;
-}
-
-// 섹션 렌더러
-function renderSection(spec, sec) {
-  switch(sec){
-    case '개요':
-      if (spec.개요) return spec.개요;
-      return null;
-    case '주요영양소': {
-      const j = spec['주요영양소'];
-      if (!j) return null;
-      // 객체/배열 모두 허용: {영양소:값} 또는 [[영양소,값], ...]
-      let rows = '';
-      if (Array.isArray(j)) {
-        rows = j.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
-      } else {
-        rows = Object.entries(j).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
-      }
-      return `<b>주요 영양소</b><br><table style="width:100%;border-collapse:collapse" border="1">
-        <thead><tr><th style="width:30%">영양소</th><th>수치/설명</th></tr></thead>
-        <tbody>${rows}</tbody></table>`;
+  const spinner = document.getElementById("spinner");
+  spinner && (spinner.style.display = "block");
+  try {
+    const res = await fetch("health_fish.json?cb=" + Date.now(), { cache: "no-cache" });
+    db = await res.json();
+    // 가드: 예상 구조 점검
+    if (!db || typeof db !== "object" || !db.categories || !db.items) {
+      throw new Error("잘못된 DB 구조");
     }
-    case '약효및효용': {
-      const arr = spec['약효및효용']; if(!arr) return null;
-      return `<b>약효 및 효용</b><ul>${arr.map(x=>`<li>${x}</li>`).join('')}</ul>`;
-    }
-    case '제철및선택법': {
-      const arr = spec['제철및선택법']; if(!arr) return null;
-      return `<b>제철 및 선택법</b><ul>${arr.map(x=>`<li>${x}</li>`).join('')}</ul>`;
-    }
-    case '조리포인트': {
-      const arr = spec['조리포인트']; if(!arr) return null;
-      return `<b>조리 포인트</b><ul>${arr.map(x=>`<li>${x}</li>`).join('')}</ul>`;
-    }
-    case '어울리는요리': {
-      const arr = spec['어울리는요리']; if(!arr) return null;
-      return `<b>어울리는 요리</b><ul>${arr.map(x=>`<li>${x}</li>`).join('')}</ul>`;
-    }
-    case '레시피': {
-      const r = spec['레시피']; if(!r) return null;
-      const ing = r.재료? `<ul>${r.재료.map(x=>`<li>${x}</li>`).join('')}</ul>` : '';
-      const steps = r.만드는법? `<ol>${r.만드는법.map(x=>`<li>${x}</li>`).join('')}</ol>`:'';
-      return `<b>레시피: ${r.이름||''}</b>${ing}${steps}`;
-    }
-    case '출처': {
-      const s = spec.source || spec.출처; if(!s) return null;
-      const arr = Array.isArray(s)? s : [s];
-      return `<b>출처</b><ul>${arr.map(x=>`<li>${x}</li>`).join('')}</ul>`;
-    }
-    default: return null;
+    showCategories();
+  } catch (err) {
+    console.error(err);
+    const chat = document.getElementById("chat");
+    const box = el("div", "bubble sys");
+    box.textContent = "데이터를 불러오지 못했습니다. JSON/JS를 확인해주세요.";
+    chat.appendChild(box);
+  } finally {
+    spinner && (spinner.style.display = "none");
   }
 }
 
-function renderSummary(cat, spec) {
-  const blocks = [];
-  SECTIONS.forEach(sec=>{
-    const b = renderSection(spec, sec);
-    if (b) blocks.push(b);
+// ---------- UI roots ----------
+function chatBox(text, cls = "bot") {
+  const chat = document.getElementById("chat");
+  const box = el("div", `bubble ${cls}`);
+  if (typeof text === "string") {
+    box.textContent = text;
+  } else if (text instanceof Node) {
+    box.appendChild(text);
+  }
+  chat.appendChild(box);
+  chat.scrollTop = chat.scrollHeight;
+  return box;
+}
+
+function chipBar() {
+  return document.getElementById("quickbar");
+}
+
+// ---------- flows ----------
+function showCategories() {
+  state = { category: null, item: null };
+  const bar = chipBar();
+  bar.hidden = false;
+  clear(bar);
+  const title = chatBox("👉 카테고리 (번호/텍스트 선택)");
+  // 카테고리 리스트
+  const list = el("ol", "list");
+  const cats = Object.keys(db.categories || {});
+  cats.forEach((name, i) => {
+    const li = el("li", null, `${i + 1}. ${name}`);
+    list.appendChild(li);
+    const chip = el("div", "chip", name);
+    chip.onclick = () => showItems(name);
+    bar.appendChild(chip);
   });
-  return `
-  <div style="border:1px solid #243455;border-radius:10px;padding:10px;background:#1b2843">
-    <div class="meta">카테고리: ${cat.name} · 어종: <b>${spec.name}</b></div>
-    ${blocks.join('<hr style="border:0;border-top:1px dashed #345">')}
-  </div>`;
+  title.appendChild(list);
 }
 
-// 프리셋 저장/불러오기(로컬)
-const PRESET_KEY = 'kafri_health_presets';
-function loadPresets(){
-  try { return JSON.parse(localStorage.getItem(PRESET_KEY) || '[]'); }
-  catch { return []; }
-}
-function savePreset(obj){
-  const arr = loadPresets();
-  arr.unshift({...obj, ts: Date.now()});
-  localStorage.setItem(PRESET_KEY, JSON.stringify(arr.slice(0,20)));
-}
-function presetChips(){
-  const arr = loadPresets();
-  if (!arr.length) return [];
-  return arr.slice(0,5).map(p=>`최근: ${p.category}/${p.species}`);
+function showItems(category) {
+  state.category = category;
+  state.item = null;
+  const bar = chipBar();
+  clear(bar);
+  const items = db.categories?.[category] || [];
+
+  const title = chatBox(`어종 (번호/텍스트 선택)`);
+  const list = el("ol", "list");
+  items.forEach((name, i) => {
+    const li = el("li", null, `${i + 1}. ${name}`);
+    list.appendChild(li);
+    const chip = el("div", "chip", name);
+    chip.onclick = () => showItemMenu(name);
+    bar.appendChild(chip);
+  });
+  title.appendChild(list);
+
+  const back = el("div", "chip ghost", "처음으로");
+  back.onclick = showCategories;
+  bar.appendChild(back);
 }
 
-// 초기 메시지/메뉴
-function greet() {
-  bot(`⚓ 수산물 건강 챗봇입니다. 무엇을 도와드릴까요?<br>아래에서 <b>카테고리</b>를 선택하세요.`);
-  state = S.PICK_CAT;
-  const names = DB.categories.map(c=>c.name);
-  bot(menuList('카테고리', names));
-  chips([...names, ...presetChips(), '도움말']);
+function showItemMenu(itemName) {
+  state.item = itemName;
+  const item = db.items?.[itemName];
+  const bar = chipBar();
+  clear(bar);
+
+  const menu = [
+    "전체 보기",
+    "주요영양소",
+    "약효및효용",
+    "제철및선택법",
+    "조리포인트",
+    "어울리는요리",
+    "레시피",
+    "출처",
+  ];
+
+  const title = chatBox(`${state.category} · ${itemName}`);
+  const list = el("ol", "list");
+  menu.forEach((m, i) => list.appendChild(el("li", null, `${i + 1}. ${m}`)));
+  title.appendChild(list);
+
+  menu.forEach((m) => {
+    const chip = el("div", "chip", m);
+    chip.onclick = () => renderSection(itemName, m);
+    bar.appendChild(chip);
+  });
+
+  const back = el("div", "chip ghost", "뒤로");
+  back.onclick = () => showItems(state.category);
+  bar.appendChild(back);
 }
 
-function menuList(title, arr) {
-  return `👉 <b>${title}</b> (번호/텍스트 선택)<br>` + arr.map((x,i)=>`${i+1}. ${x}`).join('<br>');
+function renderSection(itemName, section) {
+  const data = db.items?.[itemName] || {};
+  const sectionMap = {
+    "전체 보기": () => renderAll(itemName, data),
+    "주요영양소": () => renderKeyNutrients(data),
+    "약효및효용": () => renderBullets("약효및효용", data["약효및효용"]),
+    "제철및선택법": () => renderBullets("제철 및 선택법", data["제철및선택법"]),
+    "조리포인트": () => renderBullets("조리 포인트", data["조리포인트"]),
+    "어울리는요리": () => renderBullets("어울리는 요리", data["어울리는요리"]),
+    "레시피": () => renderRecipe(data["레시피"]),
+    "출처": () => renderBullets("출처", data["출처"]),
+  };
+  (sectionMap[section] || (() => chatBox("자료가 없습니다.")))();
 }
 
-// 메인 핸들러
-function handleUser(msgRaw){
-  const msg = msgRaw.trim();
-  if (!msg) return;
-  me(msg);
+// ---------- renderers ----------
+function renderAll(itemName, data) {
+  chatBox(`${state.category} · ${itemName}`, "tag");
 
-  // 프리셋 단축
-  if (msg.startsWith('최근: ')) {
-    const t = msg.replace('최근: ','');
-    const [category, species] = t.split('/');
-    const cIdx = pickFromList(category, DB.categories.map(c=>c.name));
-    if (cIdx!=null){
-      const sIdx = pickFromList(species, DB.categories[cIdx].species.map(s=>s.name));
-      if (sIdx!=null){
-        current = {categoryIdx:cIdx, speciesIdx:sIdx, section:null};
-        const cat = DB.categories[cIdx], spec = cat.species[sIdx];
-        bot(renderSummary(cat, spec));
-        savePreset({category: cat.name, species: spec.name});
-        state = S.LOOP_CONFIRM;
-        bot(`더 필요한 것이 있나요? (예/아니오)`);
-        chips(['예','아니오']);
-        return;
+  renderKeyNutrients(data);
+  renderBullets("약효 및 효용", data["약효및효용"]);
+  renderBullets("제철 및 선택법", data["제철및선택법"]);
+  renderBullets("조리 포인트", data["조리포인트"]);
+  renderBullets("어울리는 요리", data["어울리는요리"]);
+  renderRecipe(data["레시피"]);
+  renderBullets("출처", data["출처"]);
+}
+
+function renderKeyNutrients(data) {
+  const table = el("table", "tbl");
+  const thead = el("thead");
+  const trh = el("tr");
+  trh.appendChild(el("th", null, "영양소"));
+  trh.appendChild(el("th", null, "수치/설명"));
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  const tbody = el("tbody");
+  (safeArr(data["주요영양소"]) || []).forEach((row) => {
+    // row가 "단백질: xx" 또는 객체 {key:"단백질", value:"xx"} 형태 모두 허용
+    let key = "", val = "";
+    if (typeof row === "string") {
+      const idx = row.indexOf(":");
+      if (idx > -1) {
+        key = row.slice(0, idx).trim();
+        val = row.slice(idx + 1).trim();
+      } else {
+        key = row;
+        val = "";
       }
+    } else if (row && typeof row === "object") {
+      key = row.key || row.영양소 || "";
+      val = row.value || row.수치 || row.설명 || "";
     }
+    const tr = el("tr");
+    tr.appendChild(el("td", null, key));
+    tr.appendChild(el("td", null, val));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  const wrap = el("div");
+  wrap.appendChild(el("div", "section-title", "주요 영양소"));
+  wrap.appendChild(table);
+  chatBox(wrap);
+}
+
+function renderBullets(title, arr) {
+  const list = el("ul");
+  const items = safeArr(arr);
+  if (items.length === 0) {
+    chatBox("자료가 없습니다.");
+    return;
+  }
+  items.forEach((t) => list.appendChild(el("li", null, String(t))));
+  const wrap = el("div");
+  wrap.appendChild(el("div", "section-title", title));
+  wrap.appendChild(list);
+  chatBox(wrap);
+}
+
+function renderRecipe(recipe) {
+  if (!recipe || typeof recipe !== "object") {
+    chatBox("자료가 없습니다.");
+    return;
+  }
+  const wrap = el("div");
+  wrap.appendChild(el("div", "section-title", "레시피"));
+
+  if (recipe.이름) {
+    wrap.appendChild(el("div", "recipe-title", recipe.이름));
   }
 
-  switch(state){
-    case S.PICK_CAT: {
-      const names = DB.categories.map(c=>c.name);
-      const i = pickFromList(msg, names);
-      if (i==null){ bot(`숫자나 텍스트로 카테고리를 선택해주세요.`); return; }
-      current.categoryIdx = i;
-      const species = DB.categories[i].species.map(s=>s.name);
-      bot(menuList('어종', species));
-      chips([...species, '뒤로', '처음으로']);
-      state = S.PICK_SPECIES;
-      break;
-    }
-    case S.PICK_SPECIES: {
-      if (msg==='뒤로'){ state=S.PICK_CAT; bot(menuList('카테고리', DB.categories.map(c=>c.name))); chips(DB.categories.map(c=>c.name)); break; }
-      if (msg==='처음으로'){ reset(); break; }
-      const species = DB.categories[current.categoryIdx].species.map(s=>s.name);
-      const i = pickFromList(msg, species);
-      if (i==null){ bot(`리스트에서 어종을 선택해주세요.`); return; }
-      current.speciesIdx = i;
-      bot(menuList('보고 싶은 섹션', ['전체 보기', ...SECTIONS.filter(s=>s!=='개요')]));
-      chips(['전체 보기', ...SECTIONS.filter(s=>s!=='개요'), '뒤로', '처음으로']);
-      state = S.PICK_SECTION;
-      break;
-    }
-    case S.PICK_SECTION: {
-      if (msg==='뒤로'){ 
-        const species = DB.categories[current.categoryIdx].species.map(s=>s.name);
-        bot(menuList('어종', species)); chips([...species,'뒤로','처음으로']); state=S.PICK_SPECIES; break; 
-      }
-      if (msg==='처음으로'){ reset(); break; }
-      const opts = ['전체 보기', ...SECTIONS.filter(s=>s!=='개요')];
-      const i = pickFromList(msg, opts);
-      if (i==null){ bot(`'전체 보기' 또는 섹션을 선택해주세요.`); return; }
-      const cat = DB.categories[current.categoryIdx];
-      const spec = cat.species[current.speciesIdx];
-      if (i===0){
-        bot(renderSummary(cat, spec));
-      }else{
-        const sec = opts[i];
-        const block = renderSection(spec, sec);
-        bot(`<div class="meta">${cat.name} · <b>${spec.name}</b></div>`);
-        bot(block || '자료가 없습니다.');
-      }
-      savePreset({category: cat.name, species: spec.name});
-      state = S.LOOP_CONFIRM;
-      bot(`더 필요한 것이 있나요? (예/아니오)`);
-      chips(['예','아니오','처음으로']);
-      break;
-    }
-    case S.LOOP_CONFIRM: {
-      if (/^예$/i.test(msg)) {
-        state = S.PICK_CAT;
-        bot(menuList('카테고리', DB.categories.map(c=>c.name)));
-        chips(DB.categories.map(c=>c.name));
-      } else if (/^아니오$/i.test(msg)) {
-        bot('이용해 주셔서 감사합니다. 필요한 때 언제든 불러주세요 ⚓');
-        chips(['처음으로']);
-        state = S.MENU;
-      } else if (msg==='처음으로'){ reset(); }
-      else {
-        bot(`'예' 또는 '아니오'로 답해주세요.`);
-        chips(['예','아니오','처음으로']);
-      }
-      break;
-    }
-    default: reset();
+  const ing = safeArr(recipe.재료);
+  if (ing.length) {
+    wrap.appendChild(el("div", "sub", "재료"));
+    const ul = el("ul");
+    ing.forEach((t) => ul.appendChild(el("li", null, String(t))));
+    wrap.appendChild(ul);
   }
+
+  const steps = safeArr(recipe.만드는법);
+  if (steps.length) {
+    wrap.appendChild(el("div", "sub", "만드는 법"));
+    const ol = el("ol");
+    steps.forEach((t) => ol.appendChild(el("li", null, String(t))));
+    wrap.appendChild(ol);
+  }
+
+  chatBox(wrap);
 }
 
-function reset(){
-  state = S.MENU;
-  current = {categoryIdx:null, speciesIdx:null, section:null};
-  log.innerHTML = '';
-  greet();
-}
-
-// 이벤트
-sendBtn.onclick = ()=>{ const v = input.value; input.value=''; handleUser(v); };
-input.addEventListener('keydown',(e)=>{ if (e.key==='Enter'){ e.preventDefault(); sendBtn.click(); }});
-
-// 시작
-loadDB().then(()=>reset());
+// ---------- boot ----------
+window.addEventListener("DOMContentLoaded", loadDB);
