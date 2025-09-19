@@ -1,79 +1,66 @@
 <!doctype html>
 <html lang="ko">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>수산물 건강 챗봇 · 시범</title>
-    <style>
-      :root { --bg:#111; --card:#171717; --ink:#eaeaea; --ink2:#bdbdbd; --line:#2a2a2a; }
-      *{box-sizing:border-box}
-      body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Helvetica,Arial,sans-serif}
-      h1{font-size:18px;margin:0 0 12px}
-      .wrap{display:grid;grid-template-columns:340px 1fr 1.4fr;gap:12px;max-width:1400px;margin:18px auto;padding:0 12px}
-      .col{background:var(--card);border:1px solid var(--line);border-radius:10px;min-height:70vh;display:flex;flex-direction:column}
-      .col>header{padding:14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
-      .col>main{padding:14px;overflow:auto;gap:10px;display:flex;flex-wrap:wrap;align-content:flex-start}
-      .tag{padding:8px 10px;border:1px solid var(--line);border-radius:999px;cursor:pointer}
-      .tag:hover{background:#222}
-      .tag.on{background:#2c2c2c;border-color:#3b3b3b}
-      .pill{font-size:12px;color:var(--ink2)}
-      .empty{color:var(--ink2)}
-      .section{border-top:1px dashed var(--line);padding-top:10px;margin-top:10px}
-      .section h3{margin:8px 0 6px;font-size:15px}
-      .muted{color:var(--ink2)}
-      .toolbar{display:flex;gap:8px;flex-wrap:wrap}
-      .btn{padding:7px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer;background:#1a1a1a}
-      .btn:hover{background:#212121}
-      .note{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#141414;color:var(--ink2)}
-      .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <!-- 카테고리 -->
-      <section class="col" id="col-category">
-        <header>
-          <h1>카테고리</h1>
-          <div class="pill" id="cat-count"></div>
-        </header>
-        <main id="category-list"></main>
-      </section>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>수산물 건강 챗봇 · 시범</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <style>
+    :root{--bg:#0f141a;--panel:#121a22;--text:#e6edf3;--muted:#9fb0bf;--accent:#2f81f7;--chip:#1b2733;--chipText:#d7e2ea;--ring:#4f91ff;--border:#223041}
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Noto Sans KR,sans-serif}
+    .wrap{max-width:1280px;margin:24px auto;padding:0 16px}
+    .grid{display:grid;gap:16px;grid-template-columns:1fr 1fr 1fr}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;min-height:420px}
+    h2{margin:0 0 12px;font-size:24px}
+    .sectionTitle{font-size:14px;color:var(--muted);margin:0 0 8px}
+    .chips{display:flex;flex-wrap:wrap;gap:8px}
+    .chip{background:var(--chip);color:var(--chipText);border:1px solid var(--border);border-radius:999px;padding:8px 12px;font-size:14px;cursor:pointer;user-select:none;outline:0}
+    .chip:focus{box-shadow:0 0 0 3px var(--ring)}
+    .chip.active{background:var(--accent);color:#fff;border-color:transparent}
+    .muted{color:var(--muted)}
+    .content{white-space:pre-wrap;line-height:1.6}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .btn{background:#1b2a3a;color:#d7e2ea;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;cursor:pointer}
+    .btn:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
+    @media (max-width:1024px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="grid">
+      <div class="panel">
+        <h2>카테고리</h2>
+        <div id="categoryList" class="chips" aria-label="카테고리 목록"></div>
+      </div>
 
-      <!-- 어종 -->
-      <section class="col" id="col-species">
-        <header>
-          <h1>어종</h1>
-          <div class="pill" id="sp-count"></div>
-        </header>
-        <main id="species-list"></main>
-      </section>
+      <div class="panel">
+        <h2>어종</h2>
+        <div id="fishList" class="chips" aria-label="어종 목록"></div>
+      </div>
 
-      <!-- 세부 내용 -->
-      <section class="col" id="col-detail">
-        <header>
-          <h1>세부 내용</h1>
-          <div class="toolbar">
-            <button class="btn" id="btn-all">전체 보기</button>
-            <button class="btn" id="btn-src">출처</button>
-          </div>
-        </header>
-        <main id="detail-panel">
-          <div class="note">섹션을 선택하세요.</div>
-          <div class="section">
-            <div class="muted">카테고리를 선택하면 오른쪽에 어종이 나타납니다.  
-              어종을 선택하면 ‘출처 / 주요영양소 / 약효 및 효용 / 제철 및 선택법 / 조리 포인트 / 어울리는 요리 / 레시피’를 고를 수 있습니다.</div>
-          </div>
-          <div class="section"><span class="muted mono">데이터는 <strong>health_fish.json</strong> 에서 로드됩니다.</span></div>
-        </main>
-      </section>
+      <div class="panel">
+        <h2>세부 내용</h2>
+        <p><button id="btnAll" class="btn">전체 보기</button> <button id="btnSource" class="btn">출처</button></p>
+        <div id="content" class="content">섹션을 선택하세요.</div>
+        <p class="muted" style="margin-top:16px">카테고리를 선택하면 오른쪽에 어종이 나타납니다. 어종을 선택하면 ‘출처 / 주요영양소 / 약효 및 효용 / 제철 및 선택법 / 조리 포인트 / 어울리는 요리 / 레시피’를 고를 수 있습니다.</p>
+        <p class="muted">데이터는 <code>health_fish.json</code>에서 로드됩니다.</p>
+      </div>
     </div>
+  </div>
 
-    <!-- 캐시 무력화를 위해 버전 쿼리 사용 -->
-    <script>
-      window.__APP_VER__ = '20240919a';
-      const s = document.createElement('script');
-      s.src = `chatbot.js?v=${window.__APP_VER__}`;
-      document.body.appendChild(s);
-    </script>
-  </body>
+  <!-- 폴백 데이터: fetch 실패시 JS가 자동 사용 -->
+  <script id="healthDataInline" type="application/json">
+  {
+    "categories": {
+      "고혈압 예방": ["김","다시마","멸치","가리비","미역","톳","우뭇가사리","매생이"],
+      "간 기능 향상": ["문어","낙지","대하","꽃게","주꾸미","소라","꼬막","재첩","바지락","대합"]
+    }
+  }
+  </script>
+
+  <script src="chatbot.js" defer></script>
+</body>
 </html>
