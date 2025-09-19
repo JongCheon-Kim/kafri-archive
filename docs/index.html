@@ -1,42 +1,59 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <title>피시보감 · 수산물 건강 챗봇</title>
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>수산물 건강 챗봇 · 시범</title>
   <style>
-    body{margin:0;font-family:Arial,system-ui;background:#111;color:#eee}
-    .wrap{display:flex;gap:12px;padding:12px;height:100vh;box-sizing:border-box}
-    .panel{background:#1c1c1c;border:1px solid #333;border-radius:8px;padding:12px;overflow:auto}
-    #cat,#fish{width:22%} #view{flex:1}
-    h2{margin:6px 0 10px 0;font-size:16px}
-    .btn,.chip{display:inline-block;margin:4px 4px 0 0;padding:8px 10px;border:0;border-radius:18px;background:#2b2b2b;color:#eee;cursor:pointer}
-    .btn:hover,.chip:hover{background:#3a3a3a}
-    .card{border:1px solid #333;border-radius:8px;padding:10px;margin:8px 0;background:#151515}
-    .sect h3{margin:8px 0 6px 0;color:#ffd866}
-    .muted{color:#aaa}
-    .row{display:flex;gap:8px}
-    .row > *{flex:1}
-    .log{border-top:1px solid #333;margin-top:10px;padding-top:8px}
+    :root{color-scheme:dark;}
+    body{margin:0;background:#0f1115;color:#e8eef5;font-family:system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Helvetica, Arial, Apple SD Gothic Neo, Malgun Gothic, sans-serif}
+    .wrap{max-width:1000px;margin:0 auto;padding:14px}
+    h1{font-size:18px;margin:2px 0 12px 0;font-weight:700}
+    .grid{display:grid;grid-template-columns: 320px 1fr;gap:12px}
+    .panel{background:#121621;border:1px solid #1f2637;border-radius:10px;padding:12px;min-height:520px}
+    .panel h2{margin:0 0 10px 0;font-size:15px;color:#a4b1ff;font-weight:700}
+    .chips{display:flex;flex-wrap:wrap;gap:8px}
+    .chip{padding:6px 10px;border-radius:999px;background:#1a2133;border:1px solid #27314a;cursor:pointer;font-size:13px}
+    .chip:hover{background:#202945}
+    .big{min-height:520px;display:flex;flex-direction:column}
+    .log{flex:1;overflow:auto;padding:8px;background:#0e1320;border:1px solid #202944;border-radius:8px}
+    .msg{margin:6px 0}
+    .msg b{color:#cfe1ff}
+    .btnrow{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px}
+    button.btn{padding:6px 10px;border-radius:8px;border:1px solid #2b3552;background:#172036;color:#e8eef5;font-size:13px;cursor:pointer}
+    button.btn:hover{background:#1e2a47}
+    .muted{color:#9aa6c3;font-size:12px}
+    .footer{margin-top:10px;display:flex;gap:8px}
+    .footer button{flex:0 0 auto}
+    @media (max-width:800px){.grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
-  <div class="wrap" role="application">
-    <div id="cat" class="panel" aria-label="카테고리">
-      <h2>카테고리</h2>
-      <div id="category-box"></div>
-    </div>
-    <div id="fish" class="panel" aria-label="어종">
-      <h2>어종</h2>
-      <div id="fish-box"></div>
-    </div>
-    <div id="view" class="panel" aria-live="polite">
-      <h2>세부 내용</h2>
-      <div id="section-menu" class="muted">섹션을 선택하세요.</div>
-      <div id="detail-box"></div>
-      <div class="log" id="chat-log" role="log" aria-live="polite"></div>
+  <div class="wrap">
+    <h1>수산물 건강 챗봇 · 시범</h1>
+    <div class="grid">
+      <!-- 좌측: 카테고리+어종 리스트 -->
+      <div class="panel">
+        <h2>카테고리</h2>
+        <div id="catList" class="chips"></div>
+        <h2 style="margin-top:14px">어종</h2>
+        <div id="fishList" class="chips"></div>
+        <p class="muted" style="margin-top:10px">Tip: <span class="chip">전체 보기</span>는 세부 항목을 모두 펼칩니다. 데이터는 <code>health_fish.json</code>에서 불러옵니다.</p>
+      </div>
+
+      <!-- 우측: 대화형 패널 -->
+      <div class="panel big">
+        <h2>세부 내용</h2>
+        <div id="log" class="log"></div>
+        <div id="actions" class="btnrow"></div>
+        <div class="footer">
+          <button class="btn" id="btnBack">뒤로</button>
+          <button class="btn" id="btnHome">처음으로</button>
+        </div>
+      </div>
     </div>
   </div>
+
   <script src="chatbot.js"></script>
 </body>
 </html>

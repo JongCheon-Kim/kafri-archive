@@ -1,145 +1,142 @@
-/* 설계서 준수 버전 — 단일 스키마 전용 (categories:Object, items:Object) */
-const SECTION_ORDER = ["전체 보기","주요영양소","약효및효용","제철및선택법","조리포인트","어울리는요리","레시피","출처"];
+/* 수산물 건강 챗봇 – 대화형 로직 (설계서 준수)
+   단계: 카테고리 선택 -> 어종 선택 -> 세부 항목(7종) 선택/전체보기
+   뒤로/처음으로 내비게이션 포함
+*/
+(function () {
+  const logEl = document.getElementById('log');
+  const actionsEl = document.getElementById('actions');
+  const catListEl = document.getElementById('catList');
+  const fishListEl = document.getElementById('fishList');
+  const btnBack = document.getElementById('btnBack');
+  const btnHome = document.getElementById('btnHome');
 
-let DATA = { categories:{}, items:{} };
-let state = { cat:null, fish:null, view:null };
+  const SECTION_KEYS = [
+    '출처','주요영양소','약효 및 효용','제철 및 선택법','조리 포인트','어울리는 요리','레시피'
+  ];
 
-const $ = (id)=>document.getElementById(id);
-const esc = (s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  let DB = null;
+  let state = { cat:null, fish:null, stack:[] };
 
-async function loadData(){
-  const r = await fetch("health_fish.json",{cache:"no-store"});
-  DATA = await r.json();
-}
+  fetch('health_fish.json?_=' + Date.now())
+    .then(r => r.json())
+    .then(json => {
+      DB = json;
+      home();
+    })
+    .catch(err=>{
+      sys('데이터를 불러오지 못했습니다: ' + err.message);
+    });
 
-/* --- 메시지/칩 --- */
-function chip(label, onClick){
-  const b = document.createElement("button");
-  b.className = "chip"; b.textContent = label; b.onclick = onClick;
-  return b;
-}
-function postBot(text, chips=[]){
-  const log = $("chat-log");
-  const div = document.createElement("div");
-  div.className = "card";
-  div.innerHTML = esc(text);
-  if(chips.length){
-    const box = document.createElement("div");
-    chips.forEach(c=>box.appendChild(c));
-    div.appendChild(box);
+  // ---------- UI Helpers ----------
+  function clear(el){ while(el.firstChild) el.removeChild(el.firstChild); }
+  function msg(html){ const p=document.createElement('div'); p.className='msg'; p.innerHTML=html; logEl.appendChild(p); logEl.scrollTop=logEl.scrollHeight; }
+  function sys(text){ msg(`<b>·</b> ${escapeHtml(text)}`); }
+  function title(text){ msg(`<b>${escapeHtml(text)}</b>`); }
+  function chips(container, items, onclick){
+    clear(container);
+    items.forEach(label=>{
+      const span=document.createElement('span');
+      span.className='chip';
+      span.textContent=label;
+      span.onclick=()=>onclick(label);
+      container.appendChild(span);
+    });
   }
-  log.appendChild(div); log.scrollTop = log.scrollHeight;
-}
-
-/* --- 렌더러: 카테고리/어종/섹션 --- */
-function showCategories(){
-  state = {cat:null, fish:null, view:null};
-  $("category-box").innerHTML = "";
-  Object.keys(DATA.categories).forEach(cat=>{
-    const b = document.createElement("button");
-    b.className = "btn"; b.textContent = cat;
-    b.onclick = ()=>{ state.cat=cat; showFishList(cat); };
-    $("category-box").appendChild(b);
-  });
-  $("fish-box").innerHTML = "";
-  $("section-menu").textContent = "섹션을 선택하세요.";
-  $("detail-box").innerHTML = "";
-  postBot("카테고리를 선택하세요.", Object.keys(DATA.categories).map(cat=>chip(cat,()=>{state.cat=cat; showFishList(cat);})));
-}
-
-function showFishList(cat){
-  $("fish-box").innerHTML = "";
-  (DATA.categories[cat]||[]).forEach(name=>{
-    const b = document.createElement("button");
-    b.className = "btn"; b.textContent = name;
-    b.onclick = ()=>{ state.fish=name; showSectionMenu(); };
-    $("fish-box").appendChild(b);
-  });
-  postBot(`[${cat}] 어종을 선택하세요.`, (DATA.categories[cat]||[]).map(n=>chip(n,()=>{state.fish=n; showSectionMenu();})).concat([
-    chip("뒤로", ()=>showCategories()), chip("처음으로", ()=>showCategories())
-  ]));
-}
-
-function showSectionMenu(){
-  const item = DATA.items[state.fish]||{};
-  const menu = $("section-menu"); menu.innerHTML = "";
-  const exist = SECTION_ORDER.filter(sec=>{
-    if(sec==="전체 보기") return true;
-    if(sec==="레시피") return item.레시피 && item.레시피.이름;
-    return Array.isArray(item[sec]) ? item[sec].length>0 : Array.isArray(item.주요영양소) ? item.주요영양소.length>0 : !!item[sec];
-  });
-  exist.forEach(sec=>{
-    menu.appendChild(chip(sec,()=>{ state.view=sec; renderSection(); askMore(); }));
-  });
-  $("detail-box").innerHTML = "";
-  postBot(`[${state.cat} · ${state.fish}] 섹션을 선택하세요.`, exist.map(sec=>chip(sec,()=>{state.view=sec; renderSection(); askMore();})).concat([
-    chip("뒤로", ()=>{ state.fish=null; showFishList(state.cat); }),
-    chip("처음으로", ()=>showCategories())
-  ]));
-}
-
-function renderSection(){
-  const item = DATA.items[state.fish]||{};
-  const box = $("detail-box");
-  const sec = state.view||"전체 보기";
-  const blocks = [];
-
-  function card(title, html){
-    const d = document.createElement("div");
-    d.className = "card sect"; d.innerHTML = `<h3>${esc(title)}</h3>${html}`;
-    blocks.push(d);
+  function buttons(list){
+    clear(actionsEl);
+    list.forEach(({label,action})=>{
+      const b=document.createElement('button');
+      b.className='btn';
+      b.textContent=label;
+      b.onclick=action;
+      actionsEl.appendChild(b);
+    });
   }
-  function listToHtml(arr){ return `<ul>${arr.map(x=>`<li>${esc(Array.isArray(x)?x.join(" — "):x)}</li>`).join("")}</ul>`; }
+  function escapeHtml(s){return s.replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 
-  box.innerHTML = `<div class="muted">[${esc(state.cat)} · ${esc(state.fish)}]</div>`;
+  // ---------- Navigation ----------
+  function home(){
+    state.stack.length=0;
+    state.cat=null; state.fish=null;
+    clear(logEl); clear(actionsEl);
+    title('카테고리를 선택하세요.');
+    const cats = DB.categories.map(c=>c.name);
+    chips(catListEl, cats, selectCategory);
+    clear(fishListEl);
+    buttons([]);
+  }
 
-  const renderOne = (label, content)=>{
-    if(!content) return;
-    if(label==="주요영양소" && Array.isArray(content)){
-      card(label, listToHtml(content));
-    }else if(label==="레시피" && content && content.이름){
-      const ing = (content.재료||[]).map(i=>`<li>${esc(i)}</li>`).join("");
-      const steps = (content.순서||[]).map(s=>`<li>${esc(s)}</li>`).join("");
-      card(label, `<div><strong>${esc(content.이름)}</strong></div><div class="row">
-        <div><h4>재료</h4><ul>${ing}</ul></div>
-        <div><h4>순서</h4><ol>${steps}</ol></div>
-      </div>`);
-    }else if(Array.isArray(content)){
-      card(label, listToHtml(content));
-    }else if(typeof content==="string"){
-      card(label, `<p>${esc(content)}</p>`);
+  function back(){
+    if (state.stack.length===0) return;
+    const prev = state.stack.pop();
+    if (prev === 'fish'){
+      // 돌아가면 카테고리 선택 상태
+      state.fish=null;
+      showFishList();
+    } else if (prev === 'cat'){
+      // 맨 처음
+      home();
+    } else if (prev === 'section'){
+      showSections();
     }
-  };
-
-  if(sec==="전체 보기"){
-    ["표기","출처","주요영양소","약효및효용","제철및선택법","조리포인트","어울리는요리","레시피"].forEach(k=>renderOne(k, item[k]));
-  }else{
-    renderOne(sec, item[sec]);
   }
-  blocks.forEach(b=>box.appendChild(b));
-}
 
-/* 루프/내비 */
-function askMore(){
-  postBot("더 필요하신가요?", [
-    chip("예(섹션 선택 계속)", ()=>showSectionMenu()),
-    chip("뒤로", ()=>{ state.fish=null; showFishList(state.cat); }),
-    chip("처음으로", ()=>showCategories())
-  ]);
-}
+  // ---------- Steps ----------
+  function selectCategory(name){
+    state.stack.push('cat');
+    state.cat = DB.categories.find(c=>c.name===name);
+    state.fish=null;
+    title(`[${name}] 어종을 선택하세요.`);
+    showFishList();
+  }
 
-/* URL 파라미터(선택) */
-function applyURL(){
-  const p = new URLSearchParams(location.search);
-  const cat = p.get("cat"), fish = p.get("fish"), sec = p.get("sec");
-  if(cat && DATA.categories[cat]){ state.cat=cat; showFishList(cat); }
-  if(state.cat && fish && DATA.items[fish]){ state.fish=fish; showSectionMenu(); }
-  if(sec){ state.view=sec; renderSection(); }
-}
+  function showFishList(){
+    const list = state.cat.items.map(i=>i.name);
+    chips(fishListEl, list, selectFish);
+    buttons([
+      {label:'전체 보기', action:()=>{ sys('전체 보기는 어종 선택 후 이용할 수 있습니다. 어종을 먼저 선택해주세요.'); }},
+    ]);
+  }
 
-/* 초기화 */
-window.addEventListener("load", async ()=>{
-  await loadData();
-  showCategories();
-  applyURL();
-});
+  function selectFish(name){
+    state.stack.push('fish');
+    state.fish = state.cat.items.find(i=>i.name===name);
+    title(`[${state.cat.name} · ${name}]`);
+    showSections();
+  }
+
+  function showSections(){
+    const name = state.fish.name;
+    sys('세션을 선택하세요.');
+    buttons([
+      {label:'전체 보기', action:()=>showAllSections()},
+      ...SECTION_KEYS.map(key=>({label:key, action:()=>showOne(key)})),
+    ]);
+  }
+
+  function showOne(key){
+    state.stack.push('section');
+    const val = state.fish.sections[key] || '자료 없음';
+    title(`🔎 ${key}`);
+    msg(escapeHtml(val));
+    buttons([
+      {label:'다른 항목', action:()=>{ state.stack.pop(); showSections(); }},
+      {label:'전체 보기', action:()=>showAllSections()},
+    ]);
+  }
+
+  function showAllSections(){
+    title('📚 전체 보기');
+    SECTION_KEYS.forEach(k=>{
+      const v = state.fish.sections[k];
+      if (v){ msg(`<b>· ${k}</b>`); msg(escapeHtml(v)); }
+    });
+    buttons([
+      {label:'다른 항목', action:()=>showSections()},
+    ]);
+  }
+
+  // nav
+  btnBack.onclick = back;
+  btnHome.onclick = home;
+})();
