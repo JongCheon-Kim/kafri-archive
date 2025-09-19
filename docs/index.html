@@ -1,65 +1,42 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>수산물 건강 챗봇 · 시범</title>
+  <meta charset="UTF-8" />
+  <title>피시보감 · 수산물 건강 챗봇</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root { color-scheme: dark; }
-    body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;background:#0f1720;color:#e6edf3}
-    header{position:sticky;top:0;background:#0b1117;border-bottom:1px solid #1f2a37;padding:12px 16px;z-index:5}
-    h1{margin:0;font-size:18px}
-    main{max-width:1000px;margin:0 auto;padding:16px}
-    .row{display:flex;gap:16px;align-items:flex-start}
-    .left{flex:0 0 320px}
-    .right{flex:1 1 auto}
-    .card{background:#0b1117;border:1px solid #1f2a37;border-radius:12px;padding:12px}
-    .list{list-style:none;padding:0;margin:8px 0;display:grid;gap:6px}
-    .chip{padding:8px 10px;background:#111827;border:1px solid #263241;border-radius:999px;font-size:14px;cursor:pointer;display:inline-block}
-    .chip:hover{background:#1a2430}
-    .muted{opacity:.75}
-    .section-title{font-weight:700;margin:16px 0 8px}
-    table{width:100%;border-collapse:collapse;margin:6px 0 10px}
-    th,td{border:1px solid #253142;padding:8px 10px;text-align:left;vertical-align:top}
-    th{background:#121a24}
-    .bubble{background:#0b1117;border:1px solid #223043;border-radius:12px;padding:12px;margin:10px 0}
-    .pill{display:inline-flex;gap:8px;margin:8px 4px 0 0;flex-wrap:wrap}
-    .btn{padding:8px 12px;border:1px solid #2b3a4e;border-radius:10px;background:#0f1720;color:#e6edf3;cursor:pointer}
-    .btn:hover{background:#162130}
-    .footer{margin-top:16px;display:flex;gap:8px;flex-wrap:wrap}
-    .kbd{font-family:ui-monospace,Consolas,monospace;border:1px solid #2b3a4e;background:#0b1117;border-radius:6px;padding:2px 6px}
-    .small{font-size:13px}
-    .inline-list{margin:0;padding-left:16px}
-    .inline-list li{margin:4px 0}
-    .empty{opacity:.7;padding:10px}
-    .recipe-name{font-weight:700}
-    .hr{height:1px;background:#1f2a37;margin:12px 0}
+    body{margin:0;font-family:Arial,system-ui;background:#111;color:#eee}
+    .wrap{display:flex;gap:12px;padding:12px;height:100vh;box-sizing:border-box}
+    .panel{background:#1c1c1c;border:1px solid #333;border-radius:8px;padding:12px;overflow:auto}
+    #cat,#fish{width:22%} #view{flex:1}
+    h2{margin:6px 0 10px 0;font-size:16px}
+    .btn,.chip{display:inline-block;margin:4px 4px 0 0;padding:8px 10px;border:0;border-radius:18px;background:#2b2b2b;color:#eee;cursor:pointer}
+    .btn:hover,.chip:hover{background:#3a3a3a}
+    .card{border:1px solid #333;border-radius:8px;padding:10px;margin:8px 0;background:#151515}
+    .sect h3{margin:8px 0 6px 0;color:#ffd866}
+    .muted{color:#aaa}
+    .row{display:flex;gap:8px}
+    .row > *{flex:1}
+    .log{border-top:1px solid #333;margin-top:10px;padding-top:8px}
   </style>
 </head>
 <body>
-  <header><h1>수산물 건강 챗봇 · 시범</h1></header>
-  <main>
-    <div class="row">
-      <aside class="left">
-        <div class="card">
-          <div class="section-title">카테고리</div>
-          <div id="categoryChips" class="pill"></div>
-          <div class="hr"></div>
-          <div class="section-title">어종</div>
-          <div id="fishChips" class="pill"></div>
-        </div>
-      </aside>
-      <section class="right">
-        <div id="view" class="card"></div>
-      </section>
+  <div class="wrap" role="application">
+    <div id="cat" class="panel" aria-label="카테고리">
+      <h2>카테고리</h2>
+      <div id="category-box"></div>
     </div>
-
-    <div class="footer small muted">
-      Tip: <span class="kbd">전체 보기</span>는 항목을 모두 펼칩니다. 데이터는 <span class="kbd">health_fish.json</span>에서 불러옵니다.
+    <div id="fish" class="panel" aria-label="어종">
+      <h2>어종</h2>
+      <div id="fish-box"></div>
     </div>
-  </main>
-
-  <!-- 캐시 무효화 -->
-  <script src="chatbot.js?v=20250919-01" defer></script>
+    <div id="view" class="panel" aria-live="polite">
+      <h2>세부 내용</h2>
+      <div id="section-menu" class="muted">섹션을 선택하세요.</div>
+      <div id="detail-box"></div>
+      <div class="log" id="chat-log" role="log" aria-live="polite"></div>
+    </div>
+  </div>
+  <script src="chatbot.js"></script>
 </body>
 </html>
