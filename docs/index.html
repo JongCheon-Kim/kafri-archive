@@ -15,16 +15,14 @@
     .grid{display:grid;gap:16px;grid-template-columns:1fr 1fr 1fr}
     .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;min-height:420px}
     h2{margin:0 0 12px;font-size:24px}
-    .sectionTitle{font-size:14px;color:var(--muted);margin:0 0 8px}
     .chips{display:flex;flex-wrap:wrap;gap:8px}
     .chip{background:var(--chip);color:var(--chipText);border:1px solid var(--border);border-radius:999px;padding:8px 12px;font-size:14px;cursor:pointer;user-select:none;outline:0}
     .chip:focus{box-shadow:0 0 0 3px var(--ring)}
     .chip.active{background:var(--accent);color:#fff;border-color:transparent}
     .muted{color:var(--muted)}
     .content{white-space:pre-wrap;line-height:1.6}
-    .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
     .btn{background:#1b2a3a;color:#d7e2ea;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;cursor:pointer}
-    .btn:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
     @media (max-width:1024px){.grid{grid-template-columns:1fr}}
   </style>
 </head>
@@ -43,15 +41,18 @@
 
       <div class="panel">
         <h2>세부 내용</h2>
-        <p><button id="btnAll" class="btn">전체 보기</button> <button id="btnSource" class="btn">출처</button></p>
-        <div id="content" class="content">섹션을 선택하세요.</div>
+        <div class="toolbar">
+          <button id="btnAll" class="btn">전체 보기</button>
+          <button id="btnSource" class="btn">출처</button>
+        </div>
+        <div id="content" class="content" style="margin-top:10px;">섹션을 선택하세요.</div>
         <p class="muted" style="margin-top:16px">카테고리를 선택하면 오른쪽에 어종이 나타납니다. 어종을 선택하면 ‘출처 / 주요영양소 / 약효 및 효용 / 제철 및 선택법 / 조리 포인트 / 어울리는 요리 / 레시피’를 고를 수 있습니다.</p>
         <p class="muted">데이터는 <code>health_fish.json</code>에서 로드됩니다.</p>
       </div>
     </div>
   </div>
 
-  <!-- 폴백 데이터: fetch 실패시 JS가 자동 사용 -->
+  <!-- 폴백 데이터 (fetch 실패시 자동 사용) -->
   <script id="healthDataInline" type="application/json">
   {
     "categories": {
@@ -61,6 +62,116 @@
   }
   </script>
 
-  <script src="chatbot.js" defer></script>
+  <script>
+  (function(){
+    const $ = (s)=>document.querySelector(s);
+    const categoryList = $('#categoryList');
+    const fishList = $('#fishList');
+    const content = $('#content');
+    const btnAll = $('#btnAll');
+    const btnSource = $('#btnSource');
+
+    let DATA=null, currentCategory=null, currentFish=null;
+
+    function renderCategories(){
+      categoryList.innerHTML='';
+      Object.keys(DATA.categories).forEach(cat=>{
+        const chip=document.createElement('button');
+        chip.className='chip';
+        chip.textContent=cat;
+        chip.onclick=()=>{
+          currentCategory=cat; currentFish=null;
+          [...categoryList.children].forEach(c=>c.classList.remove('active'));
+          chip.classList.add('active');
+          renderFish();
+          content.textContent=`[${cat}] 어종을 선택하세요.`;
+        };
+        categoryList.appendChild(chip);
+      });
+    }
+
+    function renderFish(){
+      fishList.innerHTML='';
+      (DATA.categories[currentCategory]||[]).forEach(f=>{
+        const chip=document.createElement('button');
+        chip.className='chip';
+        chip.textContent=f;
+        chip.onclick=()=>{
+          currentFish=f;
+          [...fishList.children].forEach(c=>c.classList.remove('active'));
+          chip.classList.add('active');
+          renderDetails('source');
+        };
+        fishList.appendChild(chip);
+      });
+    }
+
+    function renderDetails(mode){
+      if(!currentCategory||!currentFish){content.textContent='세션을 선택하세요.';return;}
+      const d=(DATA.details&&DATA.details[currentFish])||{};
+      const blocks=[
+        ['출처', d['출처']],
+        ['주요영양소', d['주요영양소']],
+        ['약효 및 효용', d['약효 및 효용']],
+        ['제철 및 선택법', d['제철 및 선택법']],
+        ['조리 포인트', d['조리 포인트']],
+        ['어울리는 요리', d['어울리는 요리']],
+        ['레시피', d['레시피']]
+      ];
+      if(mode==='all'){
+        const lines=[];
+        lines.push(`카테고리를 선택하세요.\n[${currentCategory}] 어종을 선택하세요.\n`);
+        lines.push(`[${currentCategory} · ${currentFish}]`);
+        lines.push('・ 세션을 선택하세요.\n');
+        lines.push('📰 전체 보기');
+        blocks.forEach(([k,v])=>{lines.push(`- ${k}`);lines.push(v?String(v):'정보 없음');});
+        content.textContent=lines.join('\n');
+      }else{
+        const val=d['출처']?String(d['출처']):'정보 없음';
+        content.textContent=`카테고리를 선택하세요.\n[${currentCategory}] 어종을 선택하세요.\n\n[${currentCategory} · ${currentFish}]\n・ 세션을 선택하세요.\n\n🪪 출처\n${val}`;
+      }
+    }
+
+    btnAll.onclick=()=> currentFish ? renderDetails('all') : content.textContent='· 전체 보기는 어종 선택 후 이용할 수 있습니다. 어종을 먼저 선택해 주세요.';
+    btnSource.onclick=()=> currentFish ? renderDetails('source') : content.textContent='· 출처는 어종 선택 후 이용할 수 있습니다. 어종을 먼저 선택해 주세요.';
+
+    async function loadData(){
+      // 1) 외부 JSON 시도 (캐시 무효화)
+      try{
+        const res=await fetch(`health_fish.json?ts=${Date.now()}`,{cache:'no-store'});
+        if(!res.ok) throw new Error(res.status);
+        const json=await res.json();
+        if(!json||!json.categories) throw new Error('invalid schema');
+        console.log('[health-fish] loaded from health_fish.json');
+        return json;
+      }catch(e){
+        console.warn('[health-fish] fetch failed, use inline fallback', e);
+      }
+      // 2) 인라인 폴백
+      try{
+        const inline=$('#healthDataInline');
+        if(inline && inline.textContent.trim()){
+          const json=JSON.parse(inline.textContent);
+          if(json && json.categories){
+            console.log('[health-fish] loaded from inline fallback');
+            return json;
+          }
+        }
+      }catch(e){console.error(e);}
+      return null;
+    }
+
+    window.addEventListener('DOMContentLoaded', async()=>{
+      DATA=await loadData();
+      if(!DATA){
+        content.innerHTML='데이터 로드 실패. <br>docs/health_fish.json 존재/철자/경로 확인';
+        return;
+      }
+      DATA.details = DATA.details || {}; // details 없을 수도 있어 안전 가드
+      renderCategories();
+      content.textContent='카테고리를 먼저 선택하세요.';
+    });
+  })();
+  </script>
 </body>
 </html>
