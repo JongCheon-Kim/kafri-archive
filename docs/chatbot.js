@@ -1,251 +1,184 @@
-/* 수산물 건강 챗봇 – 안전한 캐시 무력화 + 유연한 JSON 파서 */
-const APP_VER = (window.__APP_VER__ || '20240919a');
+/* =======================================================================
+   수산물 건강 챗봇 – 설계서 v2 반영
+   - json(health_fish.json)에는 손대지 않고, 이 파일에서 출처 필드 주입
+   - [출처] 영역: 도입부 사료 출처(introSources) + 기본 출처(baseSource) 모두 표시
+   ======================================================================= */
 
-/* ---------- 공통 유틸 ---------- */
-const $ = (sel) => document.querySelector(sel);
+(async function () {
+  const $ = (sel, el = document) => el.querySelector(sel);
+  const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
 
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') node.className = v;
-    else if (k === 'text') node.textContent = v;
-    else node.setAttribute(k, v);
-  }
-  for (const c of children) {
-    if (typeof c === 'string') node.appendChild(document.createTextNode(c));
-    else if (c) node.appendChild(c);
-  }
-  return node;
-}
+  // UI 영역
+  const catWrap = $("#category");
+  const itemsWrap = $("#items");
+  const detailTitle = $("#detail-title");
+  const detailBody = $("#detail-body");
 
-/* 배열/객체 모두 안전하게 라벨 뽑기 */
-function getCategoryNames(categories) {
-  if (Array.isArray(categories)) return categories.map(String);
-  if (categories && typeof categories === 'object') return Object.keys(categories);
-  return [];
-}
+  const btnBack = $("#btn-back");
+  const btnHome = $("#btn-home");
+  const btnExpandAll = $("#btn-expand");
 
-/* 카테고리 → 어종 목록 안전 추출 */
-function getSpeciesList(data, selectedCategory) {
-  const cats = data.categories;
+  // 데이터 로드
+  const data = await fetch("health_fish.json").then(r => r.json());
 
-  // 배열형 카테고리: 별도의 맵을 조회 (있을 때)
-  if (Array.isArray(cats)) {
-    if (data.itemsByCategory && data.itemsByCategory[selectedCategory]) {
-      const arr = data.itemsByCategory[selectedCategory];
-      return Array.isArray(arr) ? arr : Object.keys(arr || {});
-    }
-    return []; // 배열형인데 매핑이 없으면 비움
-  }
+  /* ---------------------------------------------------------------
+     1) 고전 사료(도입부 출처) 매핑
+        - json은 그대로 두고, 여기서 동적으로 주입합니다.
+        - 소장님 지시: 김·다시마·미역 등 해조류는
+          「경기도지리지」「조선의 수산」「동국여지승람」
+          그 외(멸치/가리비/문어/낙지/대하/꽃게/주꾸미/소라/꼬막/재첩/바지락/대합)는
+          「자산어보」「난호어목지」「동국여지승람」을 기본 세트로 부여합니다.
+  --------------------------------------------------------------- */
+  const SEAWEED_SOURCES = ["경기도지리지", "조선의 수산", "동국여지승람"];
+  const MARINE_SOURCES  = ["자산어보", "난호어목지", "동국여지승람"];
 
-  // 객체형 카테고리
-  const node = cats && cats[selectedCategory];
-  if (!node) return [];
+  // 카테고리별 어종 목록(현재 설계 v2 기준)
+  const HYP = ["김", "다시마", "멸치", "가리비", "미역", "톳", "우뭇가사리", "매생이"];
+  const LIVER = ["문어", "낙지", "대하", "꽃게", "주꾸미", "소라", "꼬막", "재첩", "바지락", "대합"];
 
-  // 1) species 배열이 존재
-  if (Array.isArray(node.species)) return node.species;
+  // 어종 → 사료 출처 매핑 자동 생성
+  const introSourceMap = {};
+  HYP.forEach(nm => introSourceMap[nm] = (["김","다시마","미역","톳","우뭇가사리","매생이"].includes(nm) ? SEAWEED_SOURCES : MARINE_SOURCES));
+  LIVER.forEach(nm => introSourceMap[nm] = MARINE_SOURCES);
 
-  // 2) items(혹은 data) 오브젝트 밑의 키
-  if (node.items && typeof node.items === 'object') return Object.keys(node.items);
-  if (node.data && typeof node.data === 'object') return Object.keys(node.data);
-
-  // 3) 기타: 메타 키를 제외한 키 전체를 어종으로 간주
-  const metaKeys = new Set(['title', 'sections', 'source', 'items', 'data', 'species']);
-  return Object.keys(node).filter(k => !metaKeys.has(k));
-}
-
-/* 카테고리+어종 → 섹션 데이터 안전 추출 */
-function getSpeciesData(data, category, species) {
-  const cats = data.categories;
-
-  // 배열형 카테고리
-  if (Array.isArray(cats)) {
-    // itemsByCategory → details 맵을 탐색
-    const detailMap =
-      (data.details && data.details[category] && data.details[category][species]) ||
-      (data.itemsByCategory && data.itemsByCategory[category] && data.itemsByCategory[category][species]) ||
-      null;
-    return normalizeSectionMap(detailMap);
-  }
-
-  // 객체형 카테고리
-  const node = cats && cats[category];
-  if (!node) return {};
-
-  // 1) node.items[species]
-  if (node.items && node.items[species]) return normalizeSectionMap(node.items[species]);
-  // 2) node.data[species]
-  if (node.data && node.data[species]) return normalizeSectionMap(node.data[species]);
-  // 3) node[species]
-  if (node[species]) return normalizeSectionMap(node[species]);
-
-  return {};
-}
-
-/* 섹션 맵 정규화 (문자열/배열/객체 모두 허용) */
-function normalizeSectionMap(raw) {
-  if (!raw) return {};
-  if (typeof raw === 'string') return { '본문': raw };
-  if (Array.isArray(raw)) return { '본문': raw.join('\n') };
-  // 객체면 그대로
-  return raw;
-}
-
-/* 렌더링 도우미 */
-function renderTags(list, target, onClick, active) {
-  target.innerHTML = '';
-  if (!list || !list.length) {
-    target.appendChild(el('div', { class: 'empty' }, '표시할 항목이 없습니다.'));
-    return;
-  }
-  list.forEach(name => {
-    const tag = el('div', { class: 'tag' + (active === name ? ' on' : ''), text: name });
-    tag.addEventListener('click', () => onClick(name));
-    target.appendChild(tag);
+  // 데이터 후처리: 각 아이템에 baseSource / introSources 주입(없을 때만)
+  const BASE_SOURCE = "생선해산물 건강사전";
+  data.categories.forEach(cat => {
+    cat.items.forEach(it => {
+      if (!it.baseSource) it.baseSource = BASE_SOURCE;
+      if (!it.introSources || !Array.isArray(it.introSources) || it.introSources.length === 0) {
+        const candidates = introSourceMap[it.name] || MARINE_SOURCES;
+        it.introSources = candidates;
+      }
+      // 세부 섹션이 없을 수 있으니 빈 문자열로 안전화
+      it.sections = it.sections || {};
+      [
+        "출처","주요영양소","약효 및 효용","제철 및 선택법",
+        "조리 포인트","어울리는 요리","레시피"
+      ].forEach(k => { if (typeof it.sections[k] !== "string") it.sections[k] = ""; });
+    });
   });
-}
 
-function setCount(elm, n) { elm.textContent = n ? `${n}` : ''; }
+  /* ---------------------------------------------------------------
+     렌더 함수들
+  --------------------------------------------------------------- */
+  let currentCat = null;  // { name, items }
+  let currentItem = null; // { name, introSources, baseSource, sections:{} }
 
-/* ---------- 데이터 로드 ---------- */
-async function loadData() {
-  const res = await fetch(`health_fish.json?v=${APP_VER}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`health_fish.json load failed: ${res.status}`);
-  return await res.json();
-}
-
-/* ---------- 상태 ---------- */
-const state = {
-  data: null,
-  category: null,
-  species: null
-};
-
-/* ---------- UI 동작 ---------- */
-function renderCategories() {
-  const names = getCategoryNames(state.data.categories);
-  renderTags(names, $('#category-list'), (name) => {
-    state.category = name;
-    state.species = null;
-    renderCategories(); // 활성표시 업데이트
-    renderSpecies();
-    renderDetailIntro();
-  }, state.category);
-  setCount($('#cat-count'), names.length);
-}
-
-function renderSpecies() {
-  const list = state.category ? getSpeciesList(state.data, state.category) : [];
-  renderTags(list, $('#species-list'), (sp) => {
-    state.species = sp;
-    renderSpecies(); // 활성표시 업데이트
-    renderDetailIntro();
-  }, state.species);
-  setCount($('#sp-count'), list.length);
-}
-
-const SECTION_ORDER = [
-  '출처',
-  '주요 영양소', '주요영양소',
-  '약효 및 효용', '약효', '효용',
-  '제철 및 선택법', '제철', '선택법',
-  '조리 포인트', '조리포인트',
-  '어울리는 요리',
-  '레시피'
-];
-
-function pickOrderedSections(map) {
-  const keys = Object.keys(map || {});
-  if (!keys.length) return [];
-  const order = [];
-  // 우선순위 섹션
-  for (const k of SECTION_ORDER) {
-    const key = keys.find(x => x === k);
-    if (key) { order.push(key); }
-  }
-  // 나머지
-  for (const k of keys) if (!order.includes(k)) order.push(k);
-  return order;
-}
-
-function renderDetailIntro() {
-  const panel = $('#detail-panel');
-  panel.innerHTML = '';
-
-  if (!state.category) {
-    panel.appendChild(el('div', { class: 'note' }, '카테고리를 먼저 선택하세요.'));
-    return;
-  }
-  if (!state.species) {
-    panel.appendChild(el('div', { class: 'note' }, `[${state.category}] 어종을 선택하세요.`));
-    return;
+  // 카테고리 렌더
+  function renderCategories() {
+    catWrap.innerHTML = "";
+    data.categories.forEach(cat => {
+      const b = document.createElement("button");
+      b.className = "pill";
+      b.textContent = cat.name;
+      b.addEventListener("click", () => {
+        currentCat = cat;
+        currentItem = null;
+        renderItems();
+        renderDetailIntro();
+      });
+      catWrap.appendChild(b);
+    });
   }
 
-  // 섹션 버튼 안내
-  panel.appendChild(el('div', { class: 'note' },
-    `선택됨 → 카테고리: ${state.category} / 어종: ${state.species}. 상단의 [전체 보기] 또는 [출처] 버튼을 누르세요.`));
-}
+  // 어종 렌더
+  function renderItems() {
+    itemsWrap.innerHTML = "";
+    if (!currentCat) return;
 
-/* 상단 버튼: 전체 보기 */
-function showAll() {
-  if (!state.category || !state.species) return;
-  const map = getSpeciesData(state.data, state.category, state.species);
-  const order = pickOrderedSections(map);
-  const panel = $('#detail-panel');
-  panel.innerHTML = '';
-
-  if (!order.length) {
-    panel.appendChild(el('div', { class: 'note' }, '섹션 데이터가 없습니다.'));
-    return;
+    currentCat.items.forEach(it => {
+      const b = document.createElement("button");
+      b.className = "pill";
+      b.textContent = it.name;
+      b.addEventListener("click", () => {
+        currentItem = it;
+        renderDetailItem(it);
+      });
+      itemsWrap.appendChild(b);
+    });
   }
-  order.forEach(name => {
-    const val = map[name];
-    const sec = el('div', { class: 'section' });
-    sec.appendChild(el('h3', {}, name));
-    if (Array.isArray(val)) {
-      sec.appendChild(el('div', {}, val.join('<br/>')));
+
+  // 상세 – 카테고리 안내
+  function renderDetailIntro() {
+    detailTitle.textContent = "세부 내용";
+    detailBody.innerHTML = `
+      <p>카테고리를 선택하세요.</p>
+      ${currentCat ? `<p>[${currentCat.name}] 어종을 선택하세요.</p>` : ""}
+    `;
+  }
+
+  // 상세 – 아이템
+  function renderDetailItem(it) {
+    detailTitle.textContent = "세부 내용";
+
+    const bullet = s => s ? `<li>${s}</li>` : "";
+    const sec = it.sections;
+
+    // 출처 영역: 도입부 사료 + 기본 출처
+    const srcHTML = `
+      <div class="section">
+        <div class="section-title">📚 출처</div>
+        <ul class="ul">
+          ${it.introSources.map(name => `<li>${name}</li>`).join("")}
+          <li>${it.baseSource}</li>
+        </ul>
+      </div>
+    `;
+
+    // 나머지 섹션
+    const makeBlock = (title, content, icon="•") => `
+      <div class="section">
+        <div class="section-title">${icon} ${title}</div>
+        <div class="section-body">${content ? content : "· 세션을 선택하세요."}</div>
+      </div>
+    `;
+
+    detailBody.innerHTML = `
+      <p>카테고리를 선택하세요.</p>
+      <p>[${currentCat.name}] 어종을 선택하세요.</p>
+      <p>[${currentCat.name} · ${it.name}]</p>
+
+      <button class="chip" id="btn-open-all">🧭 전체 보기</button>
+      ${srcHTML}
+      ${makeBlock("주요영양소", sec["주요영양소"])}
+      ${makeBlock("약효 및 효용", sec["약효 및 효용"], "🩺")}
+      ${makeBlock("제철 및 선택법", sec["제철 및 선택법"], "🌿")}
+      ${makeBlock("조리 포인트", sec["조리 포인트"], "🍳")}
+      ${makeBlock("어울리는 요리", sec["어울리는 요리"], "🥘")}
+      ${makeBlock("레시피", sec["레시피"], "📋")}
+    `;
+
+    // “전체 보기”는 모든 섹션을 한 번 더 펼쳐서 스크롤 탑으로
+    $("#btn-open-all")?.addEventListener("click", () => {
+      detailBody.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  // 상단 공용 버튼
+  btnBack.addEventListener("click", () => {
+    if (currentItem) {
+      currentItem = null;
+      renderDetailIntro();
     } else {
-      sec.appendChild(el('div', {}, String(val)));
+      currentCat = null;
+      itemsWrap.innerHTML = "";
+      renderDetailIntro();
     }
-    panel.appendChild(sec);
   });
-}
+  btnHome.addEventListener("click", () => {
+    currentCat = null;
+    currentItem = null;
+    itemsWrap.innerHTML = "";
+    renderDetailIntro();
+  });
+  btnExpandAll.addEventListener("click", () => {
+    if (currentItem) {
+      detailBody.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  });
 
-/* 상단 버튼: 출처만 보기 */
-function showSource() {
-  if (!state.category || !state.species) return;
-  const map = getSpeciesData(state.data, state.category, state.species);
-  const srcKey = Object.keys(map).find(k => k === '출처');
-  const panel = $('#detail-panel');
-  panel.innerHTML = '';
-
-  if (!srcKey) {
-    panel.appendChild(el('div', { class: 'note' }, '출처 정보가 없습니다.'));
-    return;
-  }
-  const sec = el('div', { class: 'section' });
-  sec.appendChild(el('h3', {}, '출처'));
-  const val = map[srcKey];
-  sec.appendChild(el('div', {}, Array.isArray(val) ? val.join('<br/>') : String(val)));
-  panel.appendChild(sec);
-}
-
-/* ---------- 초기화 ---------- */
-async function init() {
-  try {
-    state.data = await loadData();
-  } catch (e) {
-    const p = $('#detail-panel');
-    p.innerHTML = '';
-    p.appendChild(el('div', { class: 'note' }, '데이터 로드 실패: ' + e.message));
-    return;
-  }
-  $('#btn-all').addEventListener('click', showAll);
-  $('#btn-src').addEventListener('click', showSource);
-
+  // 초기 렌더
   renderCategories();
-  renderSpecies();
   renderDetailIntro();
-}
-
-document.addEventListener('DOMContentLoaded', init);
+})();
