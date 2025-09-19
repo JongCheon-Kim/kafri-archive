@@ -1,251 +1,208 @@
-/* 수산물 건강 챗봇 – 안전한 캐시 무력화 + 유연한 JSON 파서 */
-const APP_VER = (window.__APP_VER__ || '20240919a');
+/* -----------------------------------------------------------
+ * 수산물 건강 챗봇 · 런타임 호환 강화 버전
+ * - health_fish.json 스키마 변형(배열/객체) 자동 호환
+ * - DOM id 제각각이어도 다중 셀렉터로 자동 매칭
+ * - 캐시 무력화(fetch ?ts=Date.now())
+ * - 섹션 누락/부분 데이터도 안전 렌더링
+ * ----------------------------------------------------------- */
 
-/* ---------- 공통 유틸 ---------- */
-const $ = (sel) => document.querySelector(sel);
-
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') node.className = v;
-    else if (k === 'text') node.textContent = v;
-    else node.setAttribute(k, v);
-  }
-  for (const c of children) {
-    if (typeof c === 'string') node.appendChild(document.createTextNode(c));
-    else if (c) node.appendChild(c);
-  }
-  return node;
-}
-
-/* 배열/객체 모두 안전하게 라벨 뽑기 */
-function getCategoryNames(categories) {
-  if (Array.isArray(categories)) return categories.map(String);
-  if (categories && typeof categories === 'object') return Object.keys(categories);
-  return [];
-}
-
-/* 카테고리 → 어종 목록 안전 추출 */
-function getSpeciesList(data, selectedCategory) {
-  const cats = data.categories;
-
-  // 배열형 카테고리: 별도의 맵을 조회 (있을 때)
-  if (Array.isArray(cats)) {
-    if (data.itemsByCategory && data.itemsByCategory[selectedCategory]) {
-      const arr = data.itemsByCategory[selectedCategory];
-      return Array.isArray(arr) ? arr : Object.keys(arr || {});
+(() => {
+  // ---------- DOM 유틸 ----------
+  const pick = (selectorList) => {
+    for (const sel of selectorList.split(",")) {
+      const el = document.querySelector(sel.trim());
+      if (el) return el;
     }
-    return []; // 배열형인데 매핑이 없으면 비움
-  }
+    return null;
+  };
 
-  // 객체형 카테고리
-  const node = cats && cats[selectedCategory];
-  if (!node) return [];
+  const $cats   = pick('#category,#categoryList,[data-role="categories"],.categories,.category');
+  const $items  = pick('#species,#speciesList,[data-role="species"],.species,.items,.fishes');
+  const $detail = pick('#detail,#detailPanel,#detailContent,[data-role="detail"],.detail,.panel');
 
-  // 1) species 배열이 존재
-  if (Array.isArray(node.species)) return node.species;
+  // 버튼은 텍스트로도 매칭(HTML마다 id 다를 수 있어 대비)
+  const findButtonByText = (txt) => {
+    const btns = Array.from(document.querySelectorAll('button, .btn, a[role="button"]'));
+    return btns.find(b => (b.textContent || '').replace(/\s/g,'').includes(txt));
+  };
+  const $btnAll  = findButtonByText('전체보기');
+  const $btnSrc  = findButtonByText('출처');
 
-  // 2) items(혹은 data) 오브젝트 밑의 키
-  if (node.items && typeof node.items === 'object') return Object.keys(node.items);
-  if (node.data && typeof node.data === 'object') return Object.keys(node.data);
+  // ---------- 안전 출력 유틸 ----------
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[m]));
 
-  // 3) 기타: 메타 키를 제외한 키 전체를 어종으로 간주
-  const metaKeys = new Set(['title', 'sections', 'source', 'items', 'data', 'species']);
-  return Object.keys(node).filter(k => !metaKeys.has(k));
-}
+  const bullet = (label, body) => {
+    if (!body || (Array.isArray(body) && body.length === 0)) return '';
+    const txt = Array.isArray(body) ? body.join('<br>') : String(body);
+    return `
+      <div style="margin:.35rem 0;">
+        <span style="opacity:.9">${label}</span>
+        <div style="margin:.25rem 0 0 .2rem; line-height:1.6">${txt}</div>
+      </div>`;
+  };
 
-/* 카테고리+어종 → 섹션 데이터 안전 추출 */
-function getSpeciesData(data, category, species) {
-  const cats = data.categories;
+  const sectionLabel = {
+    introSources: '도입부 출처',       // 예: 동국여지승람, 조선의 수산, 경기도지리지...
+    source: '출처',                   // 책(생선해산물 건강사전 등)
+    nutrients: '주요영양소',
+    efficacy: '약효 및 효용',
+    season: '제철 및 선택법',
+    tips: '조리 포인트',
+    pairing: '어울리는 요리',
+    recipe: '레시피'
+  };
 
-  // 배열형 카테고리
-  if (Array.isArray(cats)) {
-    // itemsByCategory → details 맵을 탐색
-    const detailMap =
-      (data.details && data.details[category] && data.details[category][species]) ||
-      (data.itemsByCategory && data.itemsByCategory[category] && data.itemsByCategory[category][species]) ||
-      null;
-    return normalizeSectionMap(detailMap);
-  }
+  // ---------- 데이터 로드 & 정규화 ----------
+  const DATA_URL = (document.currentScript?.dataset?.json) || 'health_fish.json';
+  const bust = (url) => `${url}${url.includes('?') ? '&' : '?'}ts=${Date.now()}`;
 
-  // 객체형 카테고리
-  const node = cats && cats[category];
-  if (!node) return {};
-
-  // 1) node.items[species]
-  if (node.items && node.items[species]) return normalizeSectionMap(node.items[species]);
-  // 2) node.data[species]
-  if (node.data && node.data[species]) return normalizeSectionMap(node.data[species]);
-  // 3) node[species]
-  if (node[species]) return normalizeSectionMap(node[species]);
-
-  return {};
-}
-
-/* 섹션 맵 정규화 (문자열/배열/객체 모두 허용) */
-function normalizeSectionMap(raw) {
-  if (!raw) return {};
-  if (typeof raw === 'string') return { '본문': raw };
-  if (Array.isArray(raw)) return { '본문': raw.join('\n') };
-  // 객체면 그대로
-  return raw;
-}
-
-/* 렌더링 도우미 */
-function renderTags(list, target, onClick, active) {
-  target.innerHTML = '';
-  if (!list || !list.length) {
-    target.appendChild(el('div', { class: 'empty' }, '표시할 항목이 없습니다.'));
-    return;
-  }
-  list.forEach(name => {
-    const tag = el('div', { class: 'tag' + (active === name ? ' on' : ''), text: name });
-    tag.addEventListener('click', () => onClick(name));
-    target.appendChild(tag);
-  });
-}
-
-function setCount(elm, n) { elm.textContent = n ? `${n}` : ''; }
-
-/* ---------- 데이터 로드 ---------- */
-async function loadData() {
-  const res = await fetch(`health_fish.json?v=${APP_VER}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`health_fish.json load failed: ${res.status}`);
-  return await res.json();
-}
-
-/* ---------- 상태 ---------- */
-const state = {
-  data: null,
-  category: null,
-  species: null
-};
-
-/* ---------- UI 동작 ---------- */
-function renderCategories() {
-  const names = getCategoryNames(state.data.categories);
-  renderTags(names, $('#category-list'), (name) => {
-    state.category = name;
-    state.species = null;
-    renderCategories(); // 활성표시 업데이트
-    renderSpecies();
-    renderDetailIntro();
-  }, state.category);
-  setCount($('#cat-count'), names.length);
-}
-
-function renderSpecies() {
-  const list = state.category ? getSpeciesList(state.data, state.category) : [];
-  renderTags(list, $('#species-list'), (sp) => {
-    state.species = sp;
-    renderSpecies(); // 활성표시 업데이트
-    renderDetailIntro();
-  }, state.species);
-  setCount($('#sp-count'), list.length);
-}
-
-const SECTION_ORDER = [
-  '출처',
-  '주요 영양소', '주요영양소',
-  '약효 및 효용', '약효', '효용',
-  '제철 및 선택법', '제철', '선택법',
-  '조리 포인트', '조리포인트',
-  '어울리는 요리',
-  '레시피'
-];
-
-function pickOrderedSections(map) {
-  const keys = Object.keys(map || {});
-  if (!keys.length) return [];
-  const order = [];
-  // 우선순위 섹션
-  for (const k of SECTION_ORDER) {
-    const key = keys.find(x => x === k);
-    if (key) { order.push(key); }
-  }
-  // 나머지
-  for (const k of keys) if (!order.includes(k)) order.push(k);
-  return order;
-}
-
-function renderDetailIntro() {
-  const panel = $('#detail-panel');
-  panel.innerHTML = '';
-
-  if (!state.category) {
-    panel.appendChild(el('div', { class: 'note' }, '카테고리를 먼저 선택하세요.'));
-    return;
-  }
-  if (!state.species) {
-    panel.appendChild(el('div', { class: 'note' }, `[${state.category}] 어종을 선택하세요.`));
-    return;
-  }
-
-  // 섹션 버튼 안내
-  panel.appendChild(el('div', { class: 'note' },
-    `선택됨 → 카테고리: ${state.category} / 어종: ${state.species}. 상단의 [전체 보기] 또는 [출처] 버튼을 누르세요.`));
-}
-
-/* 상단 버튼: 전체 보기 */
-function showAll() {
-  if (!state.category || !state.species) return;
-  const map = getSpeciesData(state.data, state.category, state.species);
-  const order = pickOrderedSections(map);
-  const panel = $('#detail-panel');
-  panel.innerHTML = '';
-
-  if (!order.length) {
-    panel.appendChild(el('div', { class: 'note' }, '섹션 데이터가 없습니다.'));
-    return;
-  }
-  order.forEach(name => {
-    const val = map[name];
-    const sec = el('div', { class: 'section' });
-    sec.appendChild(el('h3', {}, name));
-    if (Array.isArray(val)) {
-      sec.appendChild(el('div', {}, val.join('<br/>')));
-    } else {
-      sec.appendChild(el('div', {}, String(val)));
+  const normalize = (raw) => {
+    // 1) { categories: [...] } 형태
+    if (raw && Array.isArray(raw.categories)) {
+      return raw.categories.map(c => ({
+        id: c.id ?? c.key ?? c.name,
+        name: c.name ?? c.id ?? c.key,
+        items: Array.isArray(c.items) ? c.items : []
+      }));
     }
-    panel.appendChild(sec);
-  });
-}
+    // 2) { categories: { "고혈압 예방": [...], "간 기능 향상": [...] } } 형태
+    if (raw && raw.categories && typeof raw.categories === 'object' && !Array.isArray(raw.categories)) {
+      return Object.keys(raw.categories).map(k => ({
+        id: k,
+        name: k,
+        items: Array.isArray(raw.categories[k]) ? raw.categories[k] : []
+      }));
+    }
+    // 3) 배열 최상위(바로 카테고리 배열)
+    if (Array.isArray(raw)) {
+      return raw.map(c => ({
+        id: c.id ?? c.key ?? c.name,
+        name: c.name ?? c.id ?? c.key,
+        items: Array.isArray(c.items) ? c.items : []
+      }));
+    }
+    // 4) 실패시 빈 배열
+    return [];
+  };
 
-/* 상단 버튼: 출처만 보기 */
-function showSource() {
-  if (!state.category || !state.species) return;
-  const map = getSpeciesData(state.data, state.category, state.species);
-  const srcKey = Object.keys(map).find(k => k === '출처');
-  const panel = $('#detail-panel');
-  panel.innerHTML = '';
+  let CATEGORIES = [];
+  let currentCategory = null;
+  let currentItem = null;
 
-  if (!srcKey) {
-    panel.appendChild(el('div', { class: 'note' }, '출처 정보가 없습니다.'));
-    return;
-  }
-  const sec = el('div', { class: 'section' });
-  sec.appendChild(el('h3', {}, '출처'));
-  const val = map[srcKey];
-  sec.appendChild(el('div', {}, Array.isArray(val) ? val.join('<br/>') : String(val)));
-  panel.appendChild(sec);
-}
+  // ---------- 렌더링 ----------
+  const clearEl = (el) => { if (el) el.innerHTML = ''; };
 
-/* ---------- 초기화 ---------- */
-async function init() {
-  try {
-    state.data = await loadData();
-  } catch (e) {
-    const p = $('#detail-panel');
-    p.innerHTML = '';
-    p.appendChild(el('div', { class: 'note' }, '데이터 로드 실패: ' + e.message));
-    return;
-  }
-  $('#btn-all').addEventListener('click', showAll);
-  $('#btn-src').addEventListener('click', showSource);
+  const renderCategories = () => {
+    if (!$cats) return;
+    clearEl($cats);
+    CATEGORIES.forEach(cat => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tag';
+      b.style.cssText = `
+        margin: .25rem .35rem .25rem 0; padding:.35rem .7rem; border-radius: 999px;
+        background: #1e293b; color:#e5e7eb; border: 1px solid #334155; cursor:pointer;`;
+      b.textContent = cat.name;
+      b.addEventListener('click', () => {
+        currentCategory = cat;
+        currentItem = null;
+        renderItems();
+        renderPrompt(`카테고리를 선택하세요.<br><span style="opacity:.85">[${esc(cat.name)}] 어종을 선택하세요.</span>`);
+      });
+      $cats.appendChild(b);
+    });
+  };
 
-  renderCategories();
-  renderSpecies();
-  renderDetailIntro();
-}
+  const renderItems = () => {
+    if (!$items) return;
+    clearEl($items);
+    if (!currentCategory) return;
+    currentCategory.items.forEach(it => {
+      const name = it.name ?? it.title ?? it.id;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tag';
+      b.style.cssText = `
+        margin: .25rem .35rem .25rem 0; padding:.35rem .7rem; border-radius: 999px;
+        background: #0f172a; color:#e5e7eb; border: 1px solid #334155; cursor:pointer;`;
+      b.textContent = name;
+      b.addEventListener('click', () => {
+        currentItem = it;
+        renderDetail(it);
+      });
+      $items.appendChild(b);
+    });
+  };
 
-document.addEventListener('DOMContentLoaded', init);
+  const renderPrompt = (html) => {
+    if (!$detail) return;
+    $detail.innerHTML = `
+      <div style="white-space:pre-wrap; line-height:1.7">${html}</div>
+    `;
+  };
+
+  const renderDetail = (item) => {
+    if (!$detail) return;
+    const name = esc(item.name ?? item.title ?? item.id ?? '');
+    const parts = [];
+
+    // 섹션 정렬 및 표시
+    const order = ['introSources','source','nutrients','efficacy','season','tips','pairing','recipe'];
+    for (const key of order) {
+      const val = item[key];
+      // 문자열/배열/객체 모두 허용 (객체면 적당히 stringify)
+      let body = '';
+      if (Array.isArray(val)) body = val.map(v => esc(v)).join('<br>');
+      else if (val && typeof val === 'object') body = esc(JSON.stringify(val));
+      else if (val != null) body = esc(val);
+      if (body) parts.push(bullet(`· ${sectionLabel[key]}`, body));
+    }
+
+    const header = `<div style="font-weight:600; font-size:1.05rem; margin-bottom:.5rem">[${esc(currentCategory?.name ?? '')} · ${name}]</div>`;
+
+    if (parts.length === 0) {
+      $detail.innerHTML = `${header}<div style="opacity:.8">세부 정보가 없습니다.</div>`;
+      return;
+    }
+
+    $detail.innerHTML = header + parts.join('');
+  };
+
+  const showAllSections = () => {
+    if (!currentItem) return;
+    renderDetail(currentItem);
+  };
+
+  const showSourceOnly = () => {
+    if (!$detail || !currentItem) return;
+    const name = esc(currentItem.name ?? currentItem.title ?? currentItem.id ?? '');
+    const src = currentItem.source || currentItem.introSources;
+    let body = '';
+    if (Array.isArray(src)) body = src.map(v => esc(v)).join('<br>');
+    else if (src && typeof src === 'object') body = esc(JSON.stringify(src));
+    else if (src) body = esc(src);
+    $detail.innerHTML =
+      `<div style="font-weight:600; font-size:1.05rem; margin-bottom:.5rem">
+        [${esc(currentCategory?.name ?? '')} · ${name}]</div>` +
+      bullet('· 출처', body || '표시할 출처가 없습니다.');
+  };
+
+  // ---------- 이벤트 ----------
+  if ($btnAll)  $btnAll.addEventListener('click', showAllSections);
+  if ($btnSrc)  $btnSrc.addEventListener('click', showSourceOnly);
+
+  // ---------- 시작 ----------
+  fetch(bust(DATA_URL))
+    .then(r => r.json())
+    .then(raw => {
+      CATEGORIES = normalize(raw);
+      renderCategories();
+      renderPrompt('섹션을 선택하세요.<br><span style="opacity:.7">카테고리를 선택하면 오른쪽에 어종이 나타납니다. 어종을 선택하면 ‘출처 / 주요영양소 / 약효 및 효용 / 제철 및 선택법 / 조리 포인트 / 어울리는 요리 / 레시피’를 고를 수 있습니다.</span>');
+    })
+    .catch(err => {
+      console.error('health_fish.json 로드 실패:', err);
+      renderPrompt('데이터 로드 중 오류가 발생했습니다. (콘솔 확인)');
+    });
+})();
