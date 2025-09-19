@@ -1,59 +1,79 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>수산물 건강 챗봇 · 시범</title>
-  <style>
-    :root{color-scheme:dark;}
-    body{margin:0;background:#0f1115;color:#e8eef5;font-family:system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Helvetica, Arial, Apple SD Gothic Neo, Malgun Gothic, sans-serif}
-    .wrap{max-width:1000px;margin:0 auto;padding:14px}
-    h1{font-size:18px;margin:2px 0 12px 0;font-weight:700}
-    .grid{display:grid;grid-template-columns: 320px 1fr;gap:12px}
-    .panel{background:#121621;border:1px solid #1f2637;border-radius:10px;padding:12px;min-height:520px}
-    .panel h2{margin:0 0 10px 0;font-size:15px;color:#a4b1ff;font-weight:700}
-    .chips{display:flex;flex-wrap:wrap;gap:8px}
-    .chip{padding:6px 10px;border-radius:999px;background:#1a2133;border:1px solid #27314a;cursor:pointer;font-size:13px}
-    .chip:hover{background:#202945}
-    .big{min-height:520px;display:flex;flex-direction:column}
-    .log{flex:1;overflow:auto;padding:8px;background:#0e1320;border:1px solid #202944;border-radius:8px}
-    .msg{margin:6px 0}
-    .msg b{color:#cfe1ff}
-    .btnrow{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px}
-    button.btn{padding:6px 10px;border-radius:8px;border:1px solid #2b3552;background:#172036;color:#e8eef5;font-size:13px;cursor:pointer}
-    button.btn:hover{background:#1e2a47}
-    .muted{color:#9aa6c3;font-size:12px}
-    .footer{margin-top:10px;display:flex;gap:8px}
-    .footer button{flex:0 0 auto}
-    @media (max-width:800px){.grid{grid-template-columns:1fr}}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>수산물 건강 챗봇 · 시범</h1>
-    <div class="grid">
-      <!-- 좌측: 카테고리+어종 리스트 -->
-      <div class="panel">
-        <h2>카테고리</h2>
-        <div id="catList" class="chips"></div>
-        <h2 style="margin-top:14px">어종</h2>
-        <div id="fishList" class="chips"></div>
-        <p class="muted" style="margin-top:10px">Tip: <span class="chip">전체 보기</span>는 세부 항목을 모두 펼칩니다. 데이터는 <code>health_fish.json</code>에서 불러옵니다.</p>
-      </div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>수산물 건강 챗봇 · 시범</title>
+    <style>
+      :root { --bg:#111; --card:#171717; --ink:#eaeaea; --ink2:#bdbdbd; --line:#2a2a2a; }
+      *{box-sizing:border-box}
+      body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Helvetica,Arial,sans-serif}
+      h1{font-size:18px;margin:0 0 12px}
+      .wrap{display:grid;grid-template-columns:340px 1fr 1.4fr;gap:12px;max-width:1400px;margin:18px auto;padding:0 12px}
+      .col{background:var(--card);border:1px solid var(--line);border-radius:10px;min-height:70vh;display:flex;flex-direction:column}
+      .col>header{padding:14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+      .col>main{padding:14px;overflow:auto;gap:10px;display:flex;flex-wrap:wrap;align-content:flex-start}
+      .tag{padding:8px 10px;border:1px solid var(--line);border-radius:999px;cursor:pointer}
+      .tag:hover{background:#222}
+      .tag.on{background:#2c2c2c;border-color:#3b3b3b}
+      .pill{font-size:12px;color:var(--ink2)}
+      .empty{color:var(--ink2)}
+      .section{border-top:1px dashed var(--line);padding-top:10px;margin-top:10px}
+      .section h3{margin:8px 0 6px;font-size:15px}
+      .muted{color:var(--ink2)}
+      .toolbar{display:flex;gap:8px;flex-wrap:wrap}
+      .btn{padding:7px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer;background:#1a1a1a}
+      .btn:hover{background:#212121}
+      .note{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#141414;color:var(--ink2)}
+      .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <!-- 카테고리 -->
+      <section class="col" id="col-category">
+        <header>
+          <h1>카테고리</h1>
+          <div class="pill" id="cat-count"></div>
+        </header>
+        <main id="category-list"></main>
+      </section>
 
-      <!-- 우측: 대화형 패널 -->
-      <div class="panel big">
-        <h2>세부 내용</h2>
-        <div id="log" class="log"></div>
-        <div id="actions" class="btnrow"></div>
-        <div class="footer">
-          <button class="btn" id="btnBack">뒤로</button>
-          <button class="btn" id="btnHome">처음으로</button>
-        </div>
-      </div>
+      <!-- 어종 -->
+      <section class="col" id="col-species">
+        <header>
+          <h1>어종</h1>
+          <div class="pill" id="sp-count"></div>
+        </header>
+        <main id="species-list"></main>
+      </section>
+
+      <!-- 세부 내용 -->
+      <section class="col" id="col-detail">
+        <header>
+          <h1>세부 내용</h1>
+          <div class="toolbar">
+            <button class="btn" id="btn-all">전체 보기</button>
+            <button class="btn" id="btn-src">출처</button>
+          </div>
+        </header>
+        <main id="detail-panel">
+          <div class="note">섹션을 선택하세요.</div>
+          <div class="section">
+            <div class="muted">카테고리를 선택하면 오른쪽에 어종이 나타납니다.  
+              어종을 선택하면 ‘출처 / 주요영양소 / 약효 및 효용 / 제철 및 선택법 / 조리 포인트 / 어울리는 요리 / 레시피’를 고를 수 있습니다.</div>
+          </div>
+          <div class="section"><span class="muted mono">데이터는 <strong>health_fish.json</strong> 에서 로드됩니다.</span></div>
+        </main>
+      </section>
     </div>
-  </div>
 
-  <script src="chatbot.js"></script>
-</body>
+    <!-- 캐시 무력화를 위해 버전 쿼리 사용 -->
+    <script>
+      window.__APP_VER__ = '20240919a';
+      const s = document.createElement('script');
+      s.src = `chatbot.js?v=${window.__APP_VER__}`;
+      document.body.appendChild(s);
+    </script>
+  </body>
 </html>
